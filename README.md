@@ -65,9 +65,13 @@ The waitlist saves to the Supabase `waitlist` table (`supabase/migrations/0002_w
 | `src/templates.ts` | Templates: curated motion prompts, length, format and script starters |
 | `src/credits.ts` | Prices, quotes and the credit ledger rules |
 | `src/pipeline.ts` | The captioned-short pipeline, split into steps that can be retried |
-| `src/inngest.ts` | Runs the pipeline as background jobs in production (retries, per-user limits) |
+| `src/worker.ts` | The render worker: claims queued jobs from Postgres, makes voice + clip, renders, refunds on failure |
 | `src/supabase.ts` | Postgres-backed ledger and job store |
-| `supabase/migrations/0001_init.sql` | Tables, row-level security, atomic credit functions, signup bonus, launch presets |
+| `src/storage.ts` | Local, Supabase Storage or Cloudflare R2 file storage |
+| `supabase/migrations/` | Tables, row-level security, credit functions, signup bonus, job queue (`0003_app_queue.sql`), media bucket |
+| `Dockerfile`, `deploy/` | Worker container, Hetzner setup and update scripts |
+| `web/` | The website and app (Next.js on Vercel): landing page, login, studio, My videos |
+| `docs/GO-LIVE.md` | Step-by-step: Supabase, Vercel, keys, Hetzner |
 
 ## Design decisions
 
@@ -76,12 +80,13 @@ The waitlist saves to the Supabase `waitlist` table (`supabase/migrations/0002_w
 - **Language Multiplier.** `runLanguageMultiplier` makes the AI clip once and adds each language for voice + render only: four languages cost 22 credits instead of 52. Each language is its own job, so one failing voice refunds only that language.
 - **Regenerating is cheap.** Pass `reuse.videoKey` to keep the clip and change only the language or voice: that costs 3 credits instead of 13, and saves the most expensive provider call.
 - **Credits are charged before any paid call and refunded automatically on failure.** In Postgres, `spend_credits` locks per user so two jobs can't overdraw, and unique indexes make refunds and Stripe top-ups safe to retry.
-- **Each step reads and writes storage keys**, so the same code runs in one process or as separate retryable queue steps.
+- **Each step reads and writes storage keys**, so the same code runs in one process or in the worker, and a job picked up again after a crash reuses the voice and clip it already paid for.
+- **The queue is Postgres** (`claim_job` with `FOR UPDATE SKIP LOCKED`): no extra service. The website creates and charges all languages in one transaction; extra languages wait for the first one's clip.
 - **Every provider call is logged** in `generations` with latency, outcome and cost, ready for a margin dashboard by language and provider.
 
 ## Next to build
 
-1. Next.js app: upload, editor, gallery, credits page (calls `inngest.send("ayiko/short.requested", …)`)
-2. Stripe checkout and webhook → `grant_credits`
+1. Stripe checkout and webhook → `grant_credits` (buy credits)
+2. Email when a video is ready
 3. A proper moderation API in `src/moderation.ts` (text and images)
 4. Script drafting and English → Twi/Yoruba translation step

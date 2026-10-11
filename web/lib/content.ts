@@ -50,8 +50,6 @@ export const QUICK: [label: string, templateId: string, lang: string][] = [
   ["Jollof special in English", "menu-reel", "en"],
 ];
 
-export const WAITLIST_LANGS = ["English", "Twi", "Yoruba", "Nigerian Pidgin", "Hausa", "Igbo", "French", "Swahili", "Other"];
-export const WAITLIST_ROLES = ["Seller or small business", "Creator", "Church or community group", "Agency or marketer", "Other"];
 
 /** Showcase videos rendered by the engine (scripts/make-showcase.ts). */
 export interface Showcase { lang: string; caption: string; meaning: string }

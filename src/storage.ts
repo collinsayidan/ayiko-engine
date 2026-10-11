@@ -3,6 +3,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Config } from "./config";
 import type { MediaBytes } from "./providers/types";
 
@@ -82,8 +83,34 @@ export class R2Storage implements Storage {
   }
 }
 
-export function buildStorage(config: Config): Storage {
+/** Supabase Storage (private bucket). Uploads and finished videos live here. */
+export class SupabaseStorage implements Storage {
+  constructor(private readonly db: SupabaseClient, private readonly bucket: string) {}
+  async put(key: string, media: MediaBytes) {
+    assertSafeKey(key);
+    const { error } = await this.db.storage.from(this.bucket).upload(key, media.bytes, { contentType: media.mime, upsert: true });
+    if (error) throw new Error(`storage upload failed for ${key}: ${error.message}`);
+    return key;
+  }
+  async get(key: string) {
+    assertSafeKey(key);
+    const { data, error } = await this.db.storage.from(this.bucket).download(key);
+    if (error || !data) throw new Error(`storage download failed for ${key}: ${error?.message ?? "empty"}`);
+    return mediaFromKey(key, new Uint8Array(await data.arrayBuffer()));
+  }
+  async url(key: string, ttlS = 3600) {
+    const { data, error } = await this.db.storage.from(this.bucket).createSignedUrl(key, ttlS);
+    if (error || !data) throw new Error(`could not sign ${key}: ${error?.message}`);
+    return data.signedUrl;
+  }
+}
+
+export function buildStorage(config: Config, db?: SupabaseClient): Storage {
   if (config.STORAGE === "local") return new LocalStorage(config.LOCAL_STORAGE_DIR);
+  if (config.STORAGE === "supabase") {
+    if (!db) throw new Error("STORAGE=supabase needs SUPABASE_URL and SUPABASE_SECRET_KEY.");
+    return new SupabaseStorage(db, config.SUPABASE_BUCKET);
+  }
   const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET } = config;
   if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
     throw new Error("STORAGE=r2 needs R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY.");

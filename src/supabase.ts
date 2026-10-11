@@ -5,10 +5,11 @@ import type { GenerationRecord, JobRecord, JobStore } from "./jobs";
 
 /** Server-only client with the service role. Never ship this key to the browser. */
 export function supabaseAdmin(config: Config): SupabaseClient {
-  if (!config.SUPABASE_URL || !config.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+  const key = config.SUPABASE_SECRET_KEY ?? config.SUPABASE_SERVICE_ROLE_KEY;
+  if (!config.SUPABASE_URL || !key) {
+    throw new Error("Set SUPABASE_URL and SUPABASE_SECRET_KEY (or the legacy SUPABASE_SERVICE_ROLE_KEY).");
   }
-  return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  return createClient(config.SUPABASE_URL, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
 export class SupabaseLedger implements Ledger {

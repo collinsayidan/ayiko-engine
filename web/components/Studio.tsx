@@ -9,7 +9,7 @@ import { GREETINGS, LANGS, MULTI_LANGS, QUICK, SHOWCASE, TEMPLATES, estimateCred
  * Hero "ask box" + live phone preview + template gallery.
  * They share state, so a template card fills the box above.
  */
-export function Studio({ onLanguage }: { onLanguage: (form: string) => void }) {
+export function Studio() {
   const [tplId, setTplId] = useState("product-promo");
   const [lang, setLang] = useState("twi");
   const [voice, setVoice] = useState("female");
@@ -64,23 +64,15 @@ export function Studio({ onLanguage }: { onLanguage: (form: string) => void }) {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setTimeout(() => {
-      setLoading(false);
-      onLanguage(l.form);
-      setNotice(
-        <>
-          <b>This is a preview.</b> Real videos start in the private beta. <a href="#join">Join the waitlist</a> and we&apos;ll keep your spot.
-        </>,
-      );
-    }, reduce ? 200 : 1600);
+    // Take the chosen template and language into the real studio (login first if needed).
+    window.location.href = `/app?template=${encodeURIComponent(tplId)}&lang=${encodeURIComponent(lang)}`;
   }
 
   return (
     <>
       <div className="hero">
         <div>
-          <span className="pill"><i />Private beta · AI video in African languages</span>
+          <span className="pill"><i />AI video in African languages · 20 free credits</span>
           <h1>Make the video. <em>Speak their language.</em></h1>
           <p className="lede">
             Describe what you want, add a photo, pick a language. Ayiko makes a ready-to-post video with a natural

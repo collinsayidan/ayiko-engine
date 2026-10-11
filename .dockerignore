@@ -1,0 +1,12 @@
+node_modules
+web
+out
+samples
+tests
+.ayiko-storage
+.showcase-src
+.env
+.env.*
+.git
+deploy
+*.md

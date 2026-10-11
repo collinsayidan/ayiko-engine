@@ -18,7 +18,8 @@ const Env = z.object({
   NAIJALINGO_API_KEY: z.string().optional(),
   NAIJALINGO_BASE_URL: z.string().default("https://api.9jalingo.org"),
 
-  STORAGE: z.enum(["local", "r2"]).default("local"),
+  STORAGE: z.enum(["local", "supabase", "r2"]).default("local"),
+  SUPABASE_BUCKET: z.string().default("media"),
   LOCAL_STORAGE_DIR: z.string().default("./.ayiko-storage"),
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
@@ -26,7 +27,13 @@ const Env = z.object({
   R2_BUCKET: z.string().default("ayiko-media"),
 
   SUPABASE_URL: z.string().optional(),
+  /** Supabase "secret" key (new name) or legacy service_role key. Server only. */
+  SUPABASE_SECRET_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+
+  WORKER_ID: z.string().optional(),
+  WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
+  WORKER_POLL_MS: z.coerce.number().int().min(500).default(3000),
 
   CAPTION_FONT: z.string().default("Inter"),
   FFMPEG_PATH: z.string().default("ffmpeg"),

@@ -1,0 +1,18 @@
+# Runs the render worker on the server.
+#   cd ~/ayiko-engine/deploy && docker compose up -d --build
+services:
+  worker:
+    build: ..
+    image: ayiko-worker
+    env_file: ../.env.worker
+    environment:
+      WORKER_ID: ${HOSTNAME:-ayiko}-worker
+    restart: unless-stopped
+    stop_grace_period: 5m        # let in-flight videos finish on update/restart
+    init: false                  # tini is already the entrypoint
+    mem_limit: 6g
+    tmpfs:
+      - /tmp:size=2g             # FFmpeg scratch space, wiped on restart
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }

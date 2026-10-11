@@ -4,3 +4,4 @@ node_modules/
 out/
 samples/sample-product.png
 .showcase-src/
+.env.worker

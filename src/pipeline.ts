@@ -14,7 +14,7 @@ import { keys, type Storage } from "./storage";
  *   start (validate, moderate, charge) → voice → video → render → finish
  * Each step reads and writes storage keys, never in-memory buffers, so the
  * same functions run in one process (CLI, tests) or as separate retryable
- * steps in the job queue (see inngest.ts).
+ * steps in the render worker (see worker.ts).
  */
 
 export interface ShortRequest {

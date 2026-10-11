@@ -4,11 +4,9 @@ import { useEffect, useState } from "react";
 import { LogoMark } from "./Icons";
 import { LazyVideo } from "./LazyVideo";
 import { Studio } from "./Studio";
-import { Waitlist } from "./Waitlist";
 import { MULTI_LANGS, langBy } from "@/lib/content";
 
 export function Landing() {
-  const [wlLang, setWlLang] = useState("Twi");
   const [scrolled, setScrolled] = useState(false);
 
   // Frosted nav once the page scrolls
@@ -47,11 +45,11 @@ export function Landing() {
           <a href="#multiplier">Language Multiplier</a>
           <a href="#pricing">Pricing</a>
         </nav>
-        <a className="btn" href="#join">Join the waitlist</a>
+        <div className="nav-cta"><a className="nav-login" href="/login">Log in</a><a className="btn" href="/app">Start free</a></div>
       </header>
 
       <main id="top">
-        <Studio onLanguage={setWlLang} />
+        <Studio />
 
 
         <section id="multiplier" aria-labelledby="multi-h">
@@ -139,17 +137,23 @@ export function Landing() {
 
         <section className="join" id="join" aria-labelledby="join-h" data-reveal>
           <div>
-            <div className="eyebrow">Early access</div>
-            <h2 id="join-h">Be first to make videos with Ayiko</h2>
-            <p className="sub">Join the waitlist for the private beta. Beta users get free credits and a say in which languages come next.</p>
+            <div className="eyebrow">Start free</div>
+            <h2 id="join-h">Make your first video <em>in minutes</em></h2>
+            <p className="sub">Sign up with Google or your email and get 20 free credits, enough for your first video. No card needed.</p>
             <ul className="perks">
-              <li>Free credits when the beta opens</li>
-              <li>Vote on the next languages and voices</li>
-              <li>Early-supporter pricing, locked in</li>
+              <li>20 free credits when you sign up</li>
+              <li>Failed videos are refunded automatically</li>
+              <li>Download and post anywhere: TikTok, Reels, Shorts, WhatsApp</li>
             </ul>
           </div>
-          <div>
-            <Waitlist language={wlLang} setLanguage={setWlLang} />
+          <div className="start-card">
+            <img src="/showcase/multi-twi.jpg" alt="" />
+            <div>
+              <b>Your photo, your language</b>
+              <p>Upload a photo, write what the voice should say, press Generate.</p>
+              <a className="btn wide-cta" href="/app">Start free</a>
+              <a className="nav-login" href="/login">I already have an account</a>
+            </div>
           </div>
         </section>
       </main>
@@ -163,9 +167,9 @@ export function Landing() {
           <a href="#templates">Templates</a>
           <a href="#multiplier">Multiplier</a>
           <a href="#pricing">Pricing</a>
-          <a href="#join">Waitlist</a>
+          <a href="/app">Start free</a>
         </nav>
-        <p className="foot-note">© 2026 Ayiko.ai · Edinburgh, Scotland · Showcase videos are examples made with Ayiko&apos;s engine. Real generation opens in the beta.</p>
+        <p className="foot-note">© 2026 Ayiko.ai · Edinburgh, Scotland · Showcase videos were made with Ayiko&apos;s engine.</p>
       </footer>
     </div>
   );

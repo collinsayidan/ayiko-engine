@@ -405,6 +405,16 @@ input:focus, .field select:focus { border-color: var(--accent); outline: none; b
 .done p { color: var(--muted); }
 .check { width: 48px; height: 48px; border-radius: 50%; background: var(--ok); color: #07070D; display: grid; place-items: center; font-weight: 800; margin-bottom: 16px; font-size: 22px; }
 
+.nav-cta { display: flex; align-items: center; gap: 6px; }
+.nav-login { color: var(--ink-2); text-decoration: none; font-weight: 500; font-size: .925rem; padding: 10px 14px; border-radius: 999px; min-height: 44px; display: inline-flex; align-items: center; }
+.nav-login:hover { color: var(--ink); background: var(--surface); }
+.start-card { display: grid; grid-template-columns: 180px 1fr; gap: 24px; align-items: center; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-xl); padding: 22px; box-shadow: var(--shadow-lg); }
+.start-card img { width: 100%; aspect-ratio: 9 / 14; object-fit: cover; border-radius: var(--r-md); }
+.start-card b { font-family: var(--font-display); font-size: 1.35rem; letter-spacing: -.03em; }
+.start-card p { color: var(--muted); margin: 6px 0 18px; }
+.start-card .btn { width: 100%; min-height: 50px; font-size: 1rem; }
+.start-card .nav-login { justify-content: center; width: 100%; margin-top: 6px; font-size: .875rem; }
+
 /* ---------- footer ---------- */
 footer { margin-top: 24px; padding-block: 40px calc(48px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: 20px 32px; align-items: center; color: var(--muted); font-size: .85rem; }
 footer .foot-brand { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -437,6 +447,8 @@ footer .foot-note { grid-column: 1 / -1; font-size: .8rem; }
   body { padding-inline: 16px; }
   .nav { margin-inline: -16px; padding-inline: 16px; }
   .nav .btn { padding-inline: 16px; font-size: .875rem; }
+  .nav-cta .nav-login { padding-inline: 10px; }
+  .start-card { grid-template-columns: 110px 1fr; gap: 16px; padding: 16px; }
   .pill { font-size: .66rem; white-space: nowrap; max-width: 100%; letter-spacing: 0; }
   .ticker { margin-inline: -16px; }
   section { padding-block: 72px; }
