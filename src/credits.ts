@@ -45,6 +45,15 @@ export function quoteShort(input: ShortQuoteInput): Quote {
   return { total: lines.reduce((n, l) => n + l.credits, 0), lines };
 }
 
+/** Up-front price for the Language Multiplier: one clip, then voice + render per extra language. */
+export function quoteMultiplier(scripts: string[], videoDurationS: 5 | 10): Quote {
+  const lines: QuoteLine[] = scripts.map((script, i) => {
+    const q = quoteShort({ script, videoDurationS, reuseVideo: i > 0 });
+    return { item: i === 0 ? "First language (with AI clip)" : `Extra language ${i}`, credits: q.total };
+  });
+  return { total: lines.reduce((n, l) => n + l.credits, 0), lines };
+}
+
 export class InsufficientCreditsError extends Error {
   constructor(public readonly needed: number, public readonly balance: number) {
     super(`This needs ${needed} credits but the balance is ${balance}.`);

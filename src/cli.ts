@@ -1,8 +1,8 @@
 /**
  * Run the Ayiko engine end to end on your machine.
  *
- *   npm run demo                                   # mock mode, sample image, Twi then English
- *   npm run demo -- --lang yo --gender male --script "..." --image ./photo.jpg
+ *   npm run demo                                   # mock mode: one clip, four languages
+ *   npm run demo -- --langs twi,en --template new-arrival --image ./photo.jpg
  *   npm run demo -- --live                         # real providers (needs keys in .env)
  */
 import { copyFile, mkdir } from "node:fs/promises";
@@ -10,14 +10,15 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { loadConfig } from "./config";
-import { InMemoryLedger, PRICES } from "./credits";
+import { InMemoryLedger, quoteMultiplier } from "./credits";
 import { InMemoryJobStore } from "./jobs";
 import { isLanguageCode, LANGUAGES, type Gender } from "./languages";
 import { readMedia, run } from "./media";
 import { BasicModerator } from "./moderation";
-import { runCaptionedShort, type EngineDeps } from "./pipeline";
+import { runLanguageMultiplier, type EngineDeps } from "./pipeline";
 import { buildProviders } from "./providers";
 import { keys, LocalStorage } from "./storage";
+import { getTemplate, TEMPLATES } from "./templates";
 
 const SAMPLE_SCRIPTS: Record<string, string> = {
   twi: "Akwaaba! Nneɛma foforo aba. Bra bɛtɔ wo de nnɛ.",
@@ -29,18 +30,23 @@ const SAMPLE_SCRIPTS: Record<string, string> = {
 async function main() {
   const { values } = parseArgs({
     options: {
-      lang: { type: "string", default: "twi" },
-      gender: { type: "string", default: "female" },
+      langs: { type: "string", default: "twi,en,yo,pcm" },
+      template: { type: "string", default: "product-promo" },
+      gender: { type: "string" },
       script: { type: "string" },
       image: { type: "string" },
-      remix: { type: "string", default: "en" },
       out: { type: "string", default: "./out" },
       live: { type: "boolean", default: false },
     },
   });
 
-  if (!isLanguageCode(values.lang!)) throw new Error(`Unknown language "${values.lang}". Try: ${Object.keys(LANGUAGES).join(", ")}`);
-  const gender = (values.gender === "male" ? "male" : "female") as Gender;
+  const langs = values.langs!.split(",").map((l) => l.trim()).filter(Boolean);
+  for (const l of langs) if (!isLanguageCode(l)) throw new Error(`Unknown language "${l}". Try: ${Object.keys(LANGUAGES).join(", ")}`);
+  const template = getTemplate(values.template!);
+  if (!template || template.status !== "ready") {
+    throw new Error(`Unknown or unreleased template "${values.template}". Ready: ${TEMPLATES.filter((t) => t.status === "ready").map((t) => t.id).join(", ")}`);
+  }
+  const gender = (values.gender ?? template.defaultGender) as Gender;
 
   const config = loadConfig({ ...process.env, AYIKO_PROVIDER_MODE: values.live ? "live" : process.env.AYIKO_PROVIDER_MODE });
   const paths = { ffmpeg: config.FFMPEG_PATH, ffprobe: config.FFPROBE_PATH };
@@ -52,53 +58,53 @@ async function main() {
 
   const userId = "demo-user";
   await ledger.grant(userId, 20, "signup_bonus");
-  console.log(`\nAyiko engine · ${config.AYIKO_PROVIDER_MODE} mode · start balance ${await ledger.balance(userId)} credits`);
+  await ledger.grant(userId, 60, "purchase", "demo-starter-pack"); // the £5 Starter pack
+  console.log(`\nAyiko engine · ${config.AYIKO_PROVIDER_MODE} mode · template "${template.name}" · balance ${await ledger.balance(userId)} credits`);
 
   // 1. Upload
   const imagePath = values.image ? resolve(values.image) : await makeSampleImage(config.FFMPEG_PATH);
   const image = await readMedia(imagePath);
   const imageKey = await storage.put(keys.upload(userId, `product.${image.ext}`), image);
 
-  // 2. First video
-  const script = values.script ?? SAMPLE_SCRIPTS[values.lang!] ?? SAMPLE_SCRIPTS.en!;
-  console.log(`\n▶ ${LANGUAGES[values.lang!].name} short: "${script}"`);
-  const first = await runCaptionedShort(
-    { userId, imageKey, script, language: values.lang!, gender, watermark: true, motionPrompt: "slow push-in on the product, soft studio light, gentle reflections" },
+  // 2. Language Multiplier: one clip, every language
+  const items = langs.map((language) => ({
+    language: language as keyof typeof LANGUAGES,
+    script: (langs.length === 1 && values.script) || SAMPLE_SCRIPTS[language] || SAMPLE_SCRIPTS.en!,
+  }));
+  const quote = quoteMultiplier(items.map((i) => i.script), template.videoDurationS);
+  console.log(`\n▶ Language Multiplier: ${langs.map((l) => LANGUAGES[l as keyof typeof LANGUAGES].name).join(", ")}`);
+  report(quote.lines, quote.total);
+
+  const results = await runLanguageMultiplier(
+    { userId, imageKey, gender, watermark: true, motionPrompt: template.motionPrompt, videoDurationS: template.videoDurationS, aspect: template.aspect },
+    items,
     deps,
   );
-  report(first.quote.lines, first.quote.total, first.balanceAfter, first.durationS);
 
-  // 3. Remix: same clip, new language. Only the voice and render are charged.
-  const remixLang = values.remix!;
-  let remixKey: string | undefined;
-  if (isLanguageCode(remixLang) && remixLang !== values.lang) {
-    const remixScript = SAMPLE_SCRIPTS[remixLang] ?? SAMPLE_SCRIPTS.en!;
-    console.log(`\n▶ Remix in ${LANGUAGES[remixLang].name}, reusing the clip: "${remixScript}"`);
-    const remix = await runCaptionedShort(
-      { userId, imageKey, script: remixScript, language: remixLang, gender, watermark: true, reuse: { videoKey: first.videoKey } },
-      deps,
-    );
-    report(remix.quote.lines, remix.quote.total, remix.balanceAfter, remix.durationS);
-    remixKey = remix.outputKey;
-  }
-
-  // 4. Copy outputs somewhere easy to find
+  // 3. Copy outputs somewhere easy to find
   const outDir = resolve(values.out!);
   await mkdir(outDir, { recursive: true });
-  const outputs = [[first.outputKey, `ayiko-${values.lang}.mp4`], ...(remixKey ? [[remixKey, `ayiko-${remixLang}-remix.mp4`]] : [])];
-  for (const [key, name] of outputs) await copyFile(resolve(config.LOCAL_STORAGE_DIR, key!), join(outDir, name!));
+  console.log("\nResults:");
+  for (const r of results) {
+    if (!r.ok) {
+      console.log(`  ✖ ${r.language.padEnd(4)} ${r.error} (not charged)`);
+      continue;
+    }
+    const name = `ayiko-${r.language}.mp4`;
+    await copyFile(resolve(config.LOCAL_STORAGE_DIR, r.outputKey), join(outDir, name));
+    console.log(`  ✓ ${r.language.padEnd(4)} ${name.padEnd(16)} ${r.durationS}s · ${r.quote.total} credits`);
+  }
 
   console.log("\nProvider calls logged:");
   for (const g of jobs.generations) {
     console.log(`  ${g.step.padEnd(7)} ${g.provider.padEnd(11)} ${g.status.padEnd(9)} ${String(g.latencyMs ?? "").padStart(6)} ms${g.voiceId ? `  voice=${g.voiceId}` : ""}`);
   }
-  console.log(`\nFinal balance: ${await ledger.balance(userId)} credits (prices: voice ${PRICES.voicePer30s}/30s, clip ${PRICES.video5s}/5s, render ${PRICES.render})`);
-  console.log(`Videos saved in ${outDir}\n`);
+  console.log(`\nFinal balance: ${await ledger.balance(userId)} credits · videos in ${outDir}\n`);
 }
 
-function report(lines: { item: string; credits: number }[], total: number, balance: number, durationS: number) {
-  for (const l of lines) console.log(`  ${l.item.padEnd(28)} ${String(l.credits).padStart(3)} credits`);
-  console.log(`  ${"Charged".padEnd(28)} ${String(total).padStart(3)} credits · balance ${balance} · video ${durationS}s`);
+function report(lines: { item: string; credits: number }[], total: number) {
+  for (const l of lines) console.log(`  ${l.item.padEnd(30)} ${String(l.credits).padStart(3)} credits`);
+  console.log(`  ${"Total".padEnd(30)} ${String(total).padStart(3)} credits (vs ${lines.length * 13} without reuse)`);
 }
 
 async function makeSampleImage(ffmpeg: string): Promise<string> {

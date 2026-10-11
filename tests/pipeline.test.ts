@@ -116,3 +116,38 @@ describe("runCaptionedShort", () => {
     ).rejects.toBeInstanceOf(InvalidRequestError);
   });
 });
+
+describe("runLanguageMultiplier", () => {
+  it("makes one clip and charges extra languages only for voice and render", async () => {
+    const { runLanguageMultiplier } = await import("../src/pipeline");
+    const { deps, imageKey, ledger, jobs } = await setup();
+    await ledger.grant("u", 10, "admin"); // 30 total
+    const results = await runLanguageMultiplier(
+      { userId: "u", imageKey, gender: "female" },
+      [
+        { language: "twi", script: "Akwaaba!" },
+        { language: "yo", script: "Ẹ káàbọ̀!" },
+        { language: "pcm", script: "Welcome o!" },
+      ],
+      deps,
+    );
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(await ledger.balance("u")).toBe(30 - (13 + 3 + 3));
+    expect(jobs.generations.filter((g) => g.step === "video")).toHaveLength(1);
+    const keys = results.map((r) => (r.ok ? r.videoKey : ""));
+    expect(new Set(keys).size).toBe(1);
+  }, 90_000);
+
+  it("refunds only the language whose voice fails", async () => {
+    const { runLanguageMultiplier } = await import("../src/pipeline");
+    const voices = new VoiceRouter({ khaya: new FakeVoice("khaya"), naijalingo: new FakeVoice("naijalingo", true) }, config);
+    const { deps, imageKey, ledger } = await setup({ voices });
+    const results = await runLanguageMultiplier(
+      { userId: "u", imageKey, gender: "female" },
+      [{ language: "twi", script: "Akwaaba!" }, { language: "pcm", script: "Welcome o!" }],
+      deps,
+    );
+    expect(results.map((r) => r.ok)).toEqual([true, false]);
+    expect(await ledger.balance("u")).toBe(20 - 13);
+  }, 90_000);
+});

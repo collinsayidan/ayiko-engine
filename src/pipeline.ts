@@ -170,6 +170,58 @@ export async function failShort(jobId: string, err: unknown, deps: EngineDeps) {
   await deps.jobs.update(jobId, { status: "failed", error: err instanceof Error ? err.message : String(err), finishedAt: new Date().toISOString() });
 }
 
+export interface MultiplierLanguage {
+  language: LanguageCode;
+  script: string;
+  gender?: Gender;
+}
+
+export type MultiplierItem =
+  | ({ ok: true; language: LanguageCode } & ShortResult)
+  | { ok: false; language: LanguageCode; error: string };
+
+/**
+ * Language Multiplier: one product clip, many languages.
+ *
+ * Inspired by Higgsfield's Ad Multiplier, but aimed at Ayiko's edge. The
+ * expensive AI clip is made once (first language); every other language
+ * reuses it and pays only for its voice and render. Each language is its
+ * own job, so one failing voice refunds only that language.
+ */
+export async function runLanguageMultiplier(
+  base: Omit<ShortRequest, "language" | "script" | "reuse">,
+  languages: MultiplierLanguage[],
+  deps: EngineDeps,
+): Promise<MultiplierItem[]> {
+  if (languages.length === 0) throw new InvalidRequestError("Pick at least one language.");
+  if (new Set(languages.map((l) => l.language)).size !== languages.length) {
+    throw new InvalidRequestError("Each language can only appear once.");
+  }
+
+  const [first, ...rest] = languages;
+  const results: MultiplierItem[] = [];
+
+  // The first language makes the clip. If it fails, nothing else can run.
+  const lead = await runCaptionedShort(
+    { ...base, language: first!.language, script: first!.script, gender: first!.gender ?? base.gender },
+    deps,
+  );
+  results.push({ ok: true, language: first!.language, ...lead });
+
+  for (const l of rest) {
+    try {
+      const r = await runCaptionedShort(
+        { ...base, language: l.language, script: l.script, gender: l.gender ?? base.gender, reuse: { videoKey: lead.videoKey } },
+        deps,
+      );
+      results.push({ ok: true, language: l.language, ...r });
+    } catch (err) {
+      results.push({ ok: false, language: l.language, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return results;
+}
+
 /** Run the whole pipeline in one process. */
 export async function runCaptionedShort(req: ShortRequest, deps: EngineDeps): Promise<ShortResult> {
   const started = await startShort(req, deps);

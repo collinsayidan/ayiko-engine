@@ -34,3 +34,10 @@ describe("InMemoryLedger", () => {
     expect(await l.balance("u")).toBe(60);
   });
 });
+
+describe("quoteMultiplier", () => {
+  it("charges the clip once", async () => {
+    const { quoteMultiplier } = await import("../src/credits");
+    expect(quoteMultiplier(["Akwaaba!", "Welcome!", "Ẹ káàbọ̀!", "Welcome o!"], 5).total).toBe(13 + 3 * 3);
+  });
+});
