@@ -6,6 +6,7 @@ import { APP_LANGUAGES, APP_TEMPLATES, LIMITS, languageByCode, templateById, typ
 import { quoteGeneration } from "@/lib/pricing";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import type { StudioStatus, VideoItem } from "@/lib/studio";
+import { planById } from "@/lib/content";
 
 interface Data { videos: VideoItem[]; balance: number; status: StudioStatus }
 interface Photo { key?: string; preview: string; name: string; uploading: boolean; error?: string }
@@ -35,8 +36,8 @@ const timeAgo = (iso: string) => {
 
 export function AppStudio({ initial, user, start }: {
   initial: Data;
-  user: { name: string; email: string; avatar: string | null };
-  start: { template?: string; lang?: string };
+  user: { name: string; email: string; avatar: string | null; plan: string | null };
+  start: { template?: string; lang?: string; plan?: string };
 }) {
   const [data, setData] = useState<Data>(initial);
   const available = data.status.languages;
@@ -61,6 +62,23 @@ export function AppStudio({ initial, user, start }: {
   const [badField, setBadField] = useState("");
   const [toast, setToast] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [planId, setPlanId] = useState<string | null>(user.plan);
+  const [planNote, setPlanNote] = useState<string | null>(null);
+
+  // A plan picked on the pricing page: remember it on the account and say what happens next.
+  useEffect(() => {
+    const picked = planById(start.plan);
+    if (!picked) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("plan");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    if (picked.id === "free") return;
+    setPlanId(picked.id);
+    setPlanNote(picked.id);
+    void supabaseBrowser().auth.updateUser({ data: { selected_plan: picked.id, selected_plan_at: new Date().toISOString() } });
+  }, [start.plan]);
+  const plan = planById(planId);
+  const noted = planById(planNote);
   const videosRef = useRef<HTMLElement>(null);
 
   const refresh = useCallback(async () => {
@@ -174,7 +192,7 @@ export function AppStudio({ initial, user, start }: {
           <span className={`studio-dot${data.status.online ? " on" : ""}`} title={data.status.online ? "Studio online" : "Studio offline"}>
             <i />{data.status.online ? "Studio online" : "Studio offline"}
           </span>
-          <span className="credits" aria-label={`${data.balance} credits`}><b>{data.balance}</b> credits</span>
+          <span className="credits" aria-label={`${data.balance} credits${plan ? `, ${plan.name} plan selected` : ""}`}><b>{data.balance}</b> credits{plan && plan.id !== "free" && <em className="plan-tag">{plan.name}</em>}</span>
           <details className="menu">
             <summary aria-label="Account menu">{user.avatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" /> : <span>{initials || "A"}</span>}</summary>
             <div className="menu-pop">
@@ -185,6 +203,15 @@ export function AppStudio({ initial, user, start }: {
         </div>
       </header>
 
+      {noted && (
+        <div className="banner plan-banner" role="status">
+          <div>
+            <b>You chose {noted.name}: {noted.price} {noted.period}, {noted.credits}.</b>
+            <span> Card payment opens very soon. We&apos;ve saved your choice and will let you know the moment you can upgrade. Until then, make videos with your free credits.</span>
+          </div>
+          <button type="button" className="linkish" onClick={() => setPlanNote(null)}>OK</button>
+        </div>
+      )}
       {!available.length && (
         <p className="banner">Voices are being set up right now. You can look around; generating opens as soon as the studio is ready.</p>
       )}

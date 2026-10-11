@@ -312,6 +312,26 @@ h2 em { font-style: normal; background: var(--grad); -webkit-background-clip: te
 .use[disabled] { opacity: .5; cursor: default; }
 .use[disabled]::after { content: none; }
 
+/* template rail (horizontal scroll) + layout toggle */
+.tpl-tools { display: grid; gap: 16px; justify-items: start; }
+.tpl-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.view-toggle { display: inline-flex; padding: 3px; gap: 3px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line-2); }
+.view-toggle button { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 14px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: .85rem; font-weight: 600; cursor: pointer; transition: background var(--t-fast), color var(--t-fast); }
+.view-toggle button.on { background: var(--surface-2); color: var(--ink); box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.view-toggle svg, .arrows svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.arrows { display: inline-flex; gap: 6px; }
+.arrows button { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); cursor: pointer; transition: border-color var(--t-fast), background var(--t-fast), opacity var(--t-fast); }
+.arrows button:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
+.arrows button:disabled { opacity: .35; cursor: default; }
+.rail {
+  display: grid; grid-auto-flow: column; grid-auto-columns: clamp(220px, 23%, 280px); gap: 18px; margin-top: 40px;
+  overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding-inline: 24px;
+  margin-inline: -24px; padding: 6px 24px 22px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 48px), transparent);
+}
+.rail > .card { scroll-snap-align: start; }
+.rail:focus-visible { outline-offset: -2px; }
+
 /* ---------- multiplier ---------- */
 .multi { display: grid; grid-template-columns: .85fr 1.15fr; gap: 64px; align-items: center; }
 .multi > * { min-width: 0; }
@@ -357,8 +377,16 @@ td code { font-family: var(--font-mono); font-size: 12.5px; color: var(--signal)
 
 /* ---------- pricing ---------- */
 .plans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 44px; align-items: stretch; }
-.plan { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 26px; display: flex; flex-direction: column; gap: 12px; min-width: 0; transition: border-color var(--t-med), transform var(--t-med) var(--ease); }
-.plan:hover { border-color: var(--line-2); transform: translateY(-2px); }
+.plan { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 26px; display: flex; flex-direction: column; gap: 12px; min-width: 0; color: var(--ink); text-decoration: none; cursor: pointer; transition: border-color var(--t-med), transform var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease); }
+.plan:hover { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); transform: translateY(-4px); box-shadow: 0 30px 60px -36px var(--glow); }
+.plan:active { transform: translateY(-1px); }
+.plan-credits { font-size: .9rem; font-weight: 600; color: var(--signal); }
+.plan ul { flex: 1; }
+.plan-cta { margin-top: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface-2); font-weight: 600; font-size: .925rem; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast); }
+.plan-cta svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--t-fast) var(--ease); }
+.plan:hover .plan-cta { border-color: var(--accent); }
+.plan:hover .plan-cta svg { transform: translateX(3px); }
+.plan-cta.primary, .plan:hover .plan-cta.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .plan.pop { border-color: transparent; background: linear-gradient(var(--surface), var(--surface)) padding-box, var(--grad) border-box; border: 1px solid transparent; box-shadow: 0 30px 70px -36px var(--glow); }
 .plan h3 { font-size: 1rem; font-weight: 600; letter-spacing: -.01em; color: var(--ink-2); }
 .price { font-family: var(--font-display); font-size: 2.6rem; font-weight: 800; line-height: 1.05; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
@@ -434,6 +462,7 @@ footer .foot-note { grid-column: 1 / -1; font-size: .8rem; }
 }
 @media (max-width: 980px) {
   .grid, .plans { grid-template-columns: repeat(2, 1fr); }
+  .rail { grid-auto-columns: clamp(220px, 40%, 280px); }
   .hero, .multi, .join { grid-template-columns: 1fr; }
   .hero { gap: 40px; padding-top: 24px; }
   .multi, .join { gap: 40px; }
@@ -448,6 +477,8 @@ footer .foot-note { grid-column: 1 / -1; font-size: .8rem; }
   .nav { margin-inline: -16px; padding-inline: 16px; }
   .nav .btn { padding-inline: 16px; font-size: .875rem; }
   .nav-cta .nav-login { padding-inline: 10px; }
+  .rail { grid-auto-columns: 74%; margin-inline: -16px; padding-inline: 16px; scroll-padding-inline: 16px; }
+  .tpl-controls .arrows { display: none; }
   .start-card { grid-template-columns: 110px 1fr; gap: 16px; padding: 16px; }
   .pill { font-size: .66rem; white-space: nowrap; max-width: 100%; letter-spacing: 0; }
   .ticker { margin-inline: -16px; }

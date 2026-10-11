@@ -76,6 +76,16 @@ export const GREETINGS: [word: string, language: string, code: string][] = [
 /** Languages with a Language Multiplier video of the serum promo */
 export const MULTI_LANGS = ["twi", "yo", "pcm", "ha", "en", "fr"];
 
+/** Plans shown on the pricing section. `id` travels through sign-up as ?plan= */
+export interface Plan { id: string; name: string; price: string; period: string; credits: string; perks: string[]; cta: string; popular?: boolean }
+export const PLANS: Plan[] = [
+  { id: "free", name: "Free trial", price: "£0", period: "", credits: "20 credits once", perks: ["About 1 video plus extras", "Every template", "Small ayiko.ai mark"], cta: "Start free" },
+  { id: "starter", name: "Starter pack", price: "£5", period: "one-off", credits: "60 credits", perks: ["About 4 videos", "No watermark", "Credits never expire"], cta: "Choose Starter" },
+  { id: "creator", name: "Creator", price: "£15", period: "/ month", credits: "220 credits a month", perks: ["About 16 videos", "Language Multiplier", "No watermark"], cta: "Choose Creator", popular: true },
+  { id: "business", name: "Business", price: "£39", period: "/ month", credits: "650 credits a month", perks: ["About 50 videos", "Priority queue", "No watermark"], cta: "Choose Business" },
+];
+export const planById = (id?: string | null) => PLANS.find((p) => p.id === id);
+
 export const langBy = (code: string) => LANGS.find((l) => l.code === code) ?? LANGS[0]!;
 export const tplBy = (id: string) => TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0]!;
 

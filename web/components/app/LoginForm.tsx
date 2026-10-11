@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { LogoMark } from "../Icons";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import type { Plan } from "@/lib/content";
 
-export function LoginForm({ next, linkError, configured }: { next: string; linkError: boolean; configured: boolean }) {
+export function LoginForm({ next, linkError, configured, plan }: { next: string; linkError: boolean; configured: boolean; plan: Plan | null }) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "google">("idle");
   const [error, setError] = useState(linkError ? "That sign-in link has expired or was already used. Send a new one." : "");
@@ -45,8 +46,14 @@ export function LoginForm({ next, linkError, configured }: { next: string; linkE
           </>
         ) : (
           <>
-            <h1>Start making videos</h1>
-            <p className="muted">New accounts get <b>20 free credits</b>, enough for your first video.</p>
+            <h1>{plan && plan.id !== "free" ? "Create your account" : "Start making videos"}</h1>
+            {plan && (
+              <div className="picked">
+                <div><small>Selected plan</small><b>{plan.name}</b><span>{plan.price} {plan.period} · {plan.credits}</span></div>
+                <a href="/#pricing">Change</a>
+              </div>
+            )}
+            <p className="muted">New accounts get <b>20 free credits</b>, enough for your first video{plan && plan.id !== "free" ? ". We'll save your plan choice too." : "."}</p>
             {!configured && <p className="err" role="alert">Sign-in isn&apos;t connected yet. Add the Supabase keys in Vercel.</p>}
             <button className="btn google" type="button" onClick={google} disabled={!configured || state !== "idle"}>
               <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.6 3.8-5.5 3.8-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.2 14.6 2.2 12 2.2 6.6 2.2 2.2 6.6 2.2 12s4.4 9.8 9.8 9.8c5.7 0 9.4-4 9.4-9.6 0-.6-.1-1.1-.2-1.6H12z"/></svg>

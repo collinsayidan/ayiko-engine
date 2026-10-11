@@ -23,6 +23,13 @@
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .fineprint { font-size: .75rem; color: var(--muted); }
 
+.picked { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.picked div { display: grid; gap: 1px; }
+.picked small { font-family: var(--font-mono); font-size: .65rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.picked b { font-family: var(--font-display); font-size: 1.05rem; letter-spacing: -.02em; }
+.picked span { font-size: .8rem; color: var(--ink-2); }
+.picked a { font-size: .85rem; font-weight: 600; padding: 10px 4px; }
+
 /* ---------- studio shell ---------- */
 .studio { max-width: 1320px; margin: 0 auto; padding-bottom: 64px; }
 .topbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-inline: -24px; padding: 12px 24px; background: color-mix(in srgb, var(--bg) 80%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
@@ -40,6 +47,9 @@
 .menu-pop small { color: var(--muted); }
 .menu-pop form { background: none; border: 0; padding: 0; box-shadow: none; }
 .menu-pop button { width: 100%; min-height: 40px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface-2); cursor: pointer; font-weight: 600; }
+.plan-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.plan-banner b { color: var(--ink); }
+.plan-tag { font-style: normal; font-size: .7rem; font-weight: 600; color: var(--accent-ink); background: var(--accent); padding: 2px 8px; border-radius: 999px; margin-left: 4px; }
 .banner { margin-top: 16px; padding: 12px 16px; border-radius: var(--r-md); background: color-mix(in srgb, var(--signal) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--signal) 35%, transparent); color: var(--ink-2); font-size: .9rem; }
 
 .studio-grid { display: grid; grid-template-columns: minmax(360px, 460px) 1fr; gap: 28px; align-items: start; margin-top: 24px; }

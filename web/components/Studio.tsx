@@ -18,6 +18,33 @@ export function Studio() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<React.ReactNode>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<"scroll" | "grid">("scroll");
+  const [canPrev, setCanPrev] = useState(false);
+  const [canNext, setCanNext] = useState(true);
+
+  // Enable/disable the rail arrows as it scrolls.
+  useEffect(() => {
+    const el = railRef.current;
+    if (!el || view !== "scroll") return;
+    const update = () => {
+      setCanPrev(el.scrollLeft > 4);
+      setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => { el.removeEventListener("scroll", update); window.removeEventListener("resize", update); };
+  }, [view]);
+
+  function scrollTpl(dir: 1 | -1) {
+    const el = railRef.current;
+    if (!el) return;
+    const card = el.querySelector<HTMLElement>(".card");
+    const step = card ? card.offsetWidth + 18 : el.clientWidth * 0.8;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollBy({ left: dir * step * Math.max(1, Math.floor(el.clientWidth / step)), behavior: reduce ? "auto" : "smooth" });
+  }
 
   const l = langBy(lang);
   const t = tplBy(tplId);
@@ -195,9 +222,27 @@ export function Studio() {
             <div className="eyebrow">Templates</div>
             <h2 id="tpl-h">Start from a template, <em>not a blank prompt</em></h2>
           </div>
-          <p className="sub">Each one sets the camera move, length and a script starter. Tap one and it fills in the box above.</p>
+          <div className="tpl-tools">
+            <p className="sub">Each one sets the camera move, length and a script starter. Tap one and it fills in the box above.</p>
+            <div className="tpl-controls">
+              <div className="view-toggle" role="radiogroup" aria-label="Layout">
+                <button type="button" role="radio" aria-checked={view === "scroll"} className={view === "scroll" ? "on" : ""} onClick={() => setView("scroll")}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="6" height="12" rx="1.5" /><rect x="9.5" y="6" width="6" height="12" rx="1.5" /><path d="M17 6h3.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H17" /></svg>Scroll
+                </button>
+                <button type="button" role="radio" aria-checked={view === "grid"} className={view === "grid" ? "on" : ""} onClick={() => setView("grid")}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" /></svg>Grid
+                </button>
+              </div>
+              {view === "scroll" && (
+                <div className="arrows">
+                  <button type="button" aria-label="Previous templates" disabled={!canPrev} onClick={() => scrollTpl(-1)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg></button>
+                  <button type="button" aria-label="More templates" disabled={!canNext} onClick={() => scrollTpl(1)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg></button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="grid" data-reveal>
+        <div className={view === "scroll" ? "rail" : "grid"} ref={railRef} data-reveal tabIndex={view === "scroll" ? 0 : undefined} aria-label={view === "scroll" ? "Templates, scroll sideways for more" : undefined}>
           {TEMPLATES.map((x) => (
             <article className="card" key={x.id}>
               <div className={`thumb ${x.tone}${SHOWCASE[x.id] ? " has-video" : ""}`}>

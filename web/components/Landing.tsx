@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { LogoMark } from "./Icons";
 import { LazyVideo } from "./LazyVideo";
 import { Studio } from "./Studio";
-import { MULTI_LANGS, langBy } from "@/lib/content";
+import { MULTI_LANGS, PLANS, langBy } from "@/lib/content";
 
 export function Landing() {
   const [scrolled, setScrolled] = useState(false);
@@ -116,12 +116,18 @@ export function Landing() {
             A full video is about 13 credits; an extra language about 3. Failed videos are refunded automatically.
           </p>
           <div className="plans" data-reveal>
-            <div className="plan"><h3>Free trial</h3><div className="price">£0</div><ul><li>20 credits once</li><li>About 1 video plus extras</li><li>Small ayiko.ai mark</li></ul></div>
-            <div className="plan"><h3>Starter pack</h3><div className="price">£5 <small>one-off</small></div><ul><li>60 credits</li><li>About 4 videos</li><li>No watermark</li></ul></div>
-            <div className="plan pop"><span className="badge">Most popular</span><h3>Creator</h3><div className="price">£15 <small>/ month</small></div><ul><li>220 credits a month</li><li>About 16 videos</li><li>Language Multiplier</li></ul></div>
-            <div className="plan"><h3>Business</h3><div className="price">£39 <small>/ month</small></div><ul><li>650 credits a month</li><li>About 50 videos</li><li>Priority queue</li></ul></div>
+            {PLANS.map((p) => (
+              <a key={p.id} className={`plan${p.popular ? " pop" : ""}`} href={`/app?plan=${p.id}`} aria-label={`${p.cta}: ${p.name}, ${p.price} ${p.period}, ${p.credits}`}>
+                {p.popular && <span className="badge">Most popular</span>}
+                <h3>{p.name}</h3>
+                <div className="price">{p.price} {p.period && <small>{p.period}</small>}</div>
+                <p className="plan-credits">{p.credits}</p>
+                <ul>{p.perks.map((k) => <li key={k}>{k}</li>)}</ul>
+                <span className={`plan-cta${p.popular ? " primary" : ""}`}>{p.cta}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></span>
+              </a>
+            ))}
           </div>
-          <p className="fine">Planned launch pricing in GBP; final prices are confirmed when the beta opens.</p>
+          <p className="fine">Prices in GBP. Every account starts with 20 free credits; paid plans can be picked now and card payment opens shortly.</p>
         </section>
 
         <section aria-labelledby="name-h">

@@ -9,7 +9,7 @@ import "../studio.css";
 export const metadata: Metadata = { title: "Studio · Ayiko.ai", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
-export default async function AppPage({ searchParams }: { searchParams: Promise<{ template?: string; lang?: string }> }) {
+export default async function AppPage({ searchParams }: { searchParams: Promise<{ template?: string; lang?: string; plan?: string }> }) {
   const db = supabaseAdmin();
   if (!serverConfigured() || !db) {
     return (
@@ -31,8 +31,8 @@ export default async function AppPage({ searchParams }: { searchParams: Promise<
   return (
     <AppStudio
       initial={{ videos, balance, status }}
-      user={{ name, email: user.email ?? "", avatar: (user.user_metadata?.avatar_url as string | undefined) ?? null }}
-      start={{ template: sp.template, lang: sp.lang }}
+      user={{ name, email: user.email ?? "", avatar: (user.user_metadata?.avatar_url as string | undefined) ?? null, plan: (user.user_metadata?.selected_plan as string | undefined) ?? null }}
+      start={{ template: sp.template, lang: sp.lang, plan: sp.plan }}
     />
   );
 }
