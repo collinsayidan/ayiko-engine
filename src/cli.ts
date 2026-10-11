@@ -20,10 +20,10 @@ import { buildProviders } from "./providers";
 import { keys, LocalStorage } from "./storage";
 
 const SAMPLE_SCRIPTS: Record<string, string> = {
-  twi: "Akwaaba! Ntoma foforo aba. Bra bɛhwɛ yɛn ntoma fɛfɛ no nnɛ.",
-  en: "Welcome! New fabrics just landed. Come and see our beautiful cloth today.",
-  yo: "Ẹ káàbọ̀! Aṣọ tuntun ti dé. Ẹ wá wo àwọn aṣọ wa lónìí.",
-  pcm: "Welcome o! New cloth don land. Come check am today.",
+  twi: "Akwaaba! Nneɛma foforo aba. Bra bɛtɔ wo de nnɛ.",
+  en: "Welcome! New stock just landed. Come and get yours today.",
+  yo: "Ẹ káàbọ̀! Ọjà tuntun ti dé. Ẹ wá ra tiyín lónìí.",
+  pcm: "Welcome o! New market don land. Come buy your own today.",
 };
 
 async function main() {
@@ -63,7 +63,7 @@ async function main() {
   const script = values.script ?? SAMPLE_SCRIPTS[values.lang!] ?? SAMPLE_SCRIPTS.en!;
   console.log(`\n▶ ${LANGUAGES[values.lang!].name} short: "${script}"`);
   const first = await runCaptionedShort(
-    { userId, imageKey, script, language: values.lang!, gender, watermark: true, motionPrompt: "slow push-in on the fabric, gentle movement" },
+    { userId, imageKey, script, language: values.lang!, gender, watermark: true, motionPrompt: "slow push-in on the product, soft studio light, gentle reflections" },
     deps,
   );
   report(first.quote.lines, first.quote.total, first.balanceAfter, first.durationS);
@@ -102,21 +102,21 @@ function report(lines: { item: string; credits: number }[], total: number, balan
 }
 
 async function makeSampleImage(ffmpeg: string): Promise<string> {
-  const file = resolve("samples/sample-fabric.png");
+  const file = resolve("samples/sample-product.png");
   if (existsSync(file)) return file;
   await mkdir("samples", { recursive: true });
-  // A striped "kente-style" cloth on a plain backdrop, so the demo has something to animate.
+  // A neutral product shot (a glass bottle under a studio spotlight) so the demo has something to animate.
   await run(ffmpeg, [
     "-y", "-hide_banner", "-loglevel", "error",
-    "-f", "lavfi", "-i", "color=c=0x2A1F4A:s=1080x1350:d=1",
+    "-f", "lavfi", "-i", "gradients=s=1080x1350:c0=0x3B4FE0:c1=0x141233:type=radial:x0=540:y0=520:x1=540:y1=1350:d=1",
     "-vf",
-    "drawbox=x=240:y=300:w=600:h=750:color=0xF2B705:t=fill," +
-      "drawbox=x=300:y=300:w=40:h=750:color=0x1E8A5A:t=fill," +
-      "drawbox=x=420:y=300:w=60:h=750:color=0xC2412D:t=fill," +
-      "drawbox=x=560:y=300:w=24:h=750:color=0x16132A:t=fill," +
-      "drawbox=x=660:y=300:w=50:h=750:color=0x1E8A5A:t=fill," +
-      "drawbox=x=240:y=520:w=600:h=36:color=0x16132A@0.6:t=fill," +
-      "drawbox=x=240:y=800:w=600:h=36:color=0x16132A@0.6:t=fill",
+    "drawbox=x=470:y=330:w=140:h=110:color=0xE6E8F2:t=fill," +   // cap
+      "drawbox=x=500:y=440:w=80:h=40:color=0xC9CCE0@0.8:t=fill," + // neck
+      "drawbox=x=380:y=480:w=320:h=520:color=0xFFFFFF@0.28:t=fill," + // glass body
+      "drawbox=x=400:y=500:w=40:h=480:color=0xFFFFFF@0.45:t=fill," + // highlight
+      "drawbox=x=430:y=690:w=220:h=130:color=0xFFFFFF@0.9:t=fill," + // label
+      "drawbox=x=480:y=748:w=120:h=8:color=0x2340D9:t=fill," +
+      "drawbox=x=330:y=1000:w=420:h=14:color=0x000000@0.35:t=fill",  // shadow
     "-frames:v", "1", file,
   ]);
   return file;
