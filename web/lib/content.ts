@@ -53,6 +53,19 @@ export const QUICK: [label: string, templateId: string, lang: string][] = [
 export const WAITLIST_LANGS = ["English", "Twi", "Yoruba", "Nigerian Pidgin", "Hausa", "Igbo", "French", "Swahili", "Other"];
 export const WAITLIST_ROLES = ["Seller or small business", "Creator", "Church or community group", "Agency or marketer", "Other"];
 
+/** Showcase videos rendered by the engine (scripts/make-showcase.ts). */
+export interface Showcase { lang: string; caption: string; meaning: string }
+export const SHOWCASE: Record<string, Showcase> = {
+  "product-promo": { lang: "twi", caption: "Akwaaba! Nneɛma foforo aba.", meaning: "Twi · “Welcome! New stock has arrived. Come and buy yours today.”" },
+  "new-arrival": { lang: "pcm", caption: "E don land!", meaning: "Pidgin · “It's here! New sneakers just dropped. Come early, stock is limited.”" },
+  "event-promo": { lang: "en", caption: "You're invited!", meaning: "English · event invite with an RSVP button" },
+  "church-announcement": { lang: "yo", caption: "Ẹ káàbọ̀!", meaning: "Yorùbá · “Welcome! Thanksgiving service this Sunday. Do come!”" },
+  "creator-short": { lang: "en", caption: "Here's my top tip", meaning: "English · a creator tip with a follow button" },
+  "menu-reel": { lang: "twi", caption: "Jollof ne nkokɔ aba!", meaning: "Twi · “Jollof and chicken are here! Buy yours today.”" },
+};
+/** Languages with a Language Multiplier video of the serum promo */
+export const MULTI_LANGS = ["twi", "yo", "pcm", "ha", "en", "fr"];
+
 export const langBy = (code: string) => LANGS.find((l) => l.code === code) ?? LANGS[0]!;
 export const tplBy = (id: string) => TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0]!;
 

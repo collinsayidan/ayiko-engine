@@ -3,3 +3,4 @@ node_modules/
 .ayiko-storage/
 out/
 samples/sample-product.png
+.showcase-src/

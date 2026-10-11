@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { LogoMark } from "./Icons";
+import { LazyVideo } from "./LazyVideo";
 import { Studio } from "./Studio";
 import { Waitlist } from "./Waitlist";
-import { LANGS } from "@/lib/content";
+import { MULTI_LANGS, langBy } from "@/lib/content";
 
 export function Landing() {
   const [wlLang, setWlLang] = useState("Twi");
@@ -44,10 +45,10 @@ export function Landing() {
               </div>
             </div>
             <div className="wall" aria-label="The same video in six languages">
-              {LANGS.slice(0, 6).map((l) => (
-                <div className="mini" key={l.code}>
-                  <b>{l.code}</b>
-                  <p><span>{l.caption}</span></p>
+              {MULTI_LANGS.map((code) => (
+                <div className="mini" key={code}>
+                  <LazyVideo src={`/showcase/multi-${code}.mp4`} poster={`/showcase/multi-${code}.jpg`} label={`The same video in ${langBy(code).name}`} />
+                  <b>{langBy(code).name}</b>
                 </div>
               ))}
             </div>

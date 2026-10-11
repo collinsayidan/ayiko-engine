@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { TemplateIcon } from "./Icons";
-import { LANGS, QUICK, TEMPLATES, estimateCredits, langBy, tplBy } from "@/lib/content";
+import { LazyVideo } from "./LazyVideo";
+import { LANGS, MULTI_LANGS, QUICK, SHOWCASE, TEMPLATES, estimateCredits, langBy, tplBy } from "@/lib/content";
 
 /**
  * Hero "ask box" + live phone preview + template gallery.
@@ -21,9 +22,18 @@ export function Studio({ onLanguage }: { onLanguage: (form: string) => void }) {
   const l = langBy(lang);
   const t = tplBy(tplId);
   const caption = loading ? "Generating…" : l.caption;
+
+  // Which real showcase video the phone plays (when no photo is uploaded).
+  const show = SHOWCASE[tplId];
+  const useMulti = tplId === "product-promo" && lang !== "twi" && MULTI_LANGS.includes(lang);
+  const videoSrc = useMulti ? `/showcase/multi-${lang}` : `/showcase/${show ? tplId : "product-promo"}`;
   const meaning = loading
     ? `Writing the voiceover in ${l.form}, animating your ${photo ? "photo" : "product"}…`
-    : l.meaning || "Original English script";
+    : photo
+      ? l.meaning || "Original English script"
+      : useMulti
+        ? `${l.name} · same clip, new voice and captions (Language Multiplier)`
+        : show?.meaning ?? "";
 
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url); }, [photo]);
 
@@ -129,19 +139,33 @@ export function Studio({ onLanguage }: { onLanguage: (form: string) => void }) {
           <div className="phone" role="img" aria-label="Video preview with voiceover captions">
             <div className={`screen${loading ? " loading" : ""}`}>
               <div className="backdrop" />
-              {photo && <div className="photo" style={{ backgroundImage: `url(${JSON.stringify(photo.url)})` }} />}
-              <span className="ring" /><span className="ring r2" /><span className="ring r3" />
-              {!photo && (
-                <div className="bottle"><span className="cap" /><span className="neck" /><span className="body" /><span className="label" /></div>
+              {photo ? (
+                <>
+                  <div className="photo" style={{ backgroundImage: `url(${JSON.stringify(photo.url)})` }} />
+                  <span className="ring" /><span className="ring r2" /><span className="ring r3" />
+                  <div className="shade" />
+                  <span className="tag">{t.name} · 9:16</span>
+                  <span className="rec"><i /><span>{l.code}</span></span>
+                  <span className="mark-wm">ayiko.ai</span>
+                  <div className="caption"><p>{caption}</p></div>
+                  <div className="wave" aria-hidden="true">
+                    {Array.from({ length: 18 }, (_, w) => <span key={w} style={{ animationDelay: `${-((w * 37) % 100) / 100}s` }} />)}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <video
+                    key={videoSrc}
+                    className="screen-video"
+                    src={`${videoSrc}.mp4`}
+                    poster={`${videoSrc}.jpg`}
+                    autoPlay muted loop playsInline
+                    aria-label={`${t.name} example video`}
+                  />
+                  {loading && <div className="generating"><span />Generating…</div>}
+                  <span className="rec"><i /><span>{useMulti ? lang : show?.lang ?? "twi"}</span></span>
+                </>
               )}
-              <div className="shade" />
-              <span className="tag">{t.name} · 9:16</span>
-              <span className="rec"><i /><span>{l.code}</span></span>
-              <span className="mark-wm">ayiko.ai</span>
-              <div className="caption"><p>{caption}</p></div>
-              <div className="wave" aria-hidden="true">
-                {Array.from({ length: 18 }, (_, w) => <span key={w} style={{ animationDelay: `${-((w * 37) % 100) / 100}s` }} />)}
-              </div>
             </div>
           </div>
           <p className="meaning">{meaning}</p>
@@ -159,14 +183,18 @@ export function Studio({ onLanguage }: { onLanguage: (form: string) => void }) {
         <div className="grid">
           {TEMPLATES.map((x) => (
             <article className="card" key={x.id}>
-              <div className={`thumb ${x.tone}`}>
-                <TemplateIcon name={x.icon} />
-                {x.ready ? <span className="lang">{langBy(x.lang).name}</span> : <span className="soon">Soon</span>}
+              <div className={`thumb ${x.tone}${SHOWCASE[x.id] ? " has-video" : ""}`}>
+                {SHOWCASE[x.id] ? (
+                  <LazyVideo src={`/showcase/${x.id}.mp4`} poster={`/showcase/${x.id}.jpg`} label={`${x.name} example`} />
+                ) : (
+                  <TemplateIcon name={x.icon} />
+                )}
+                {x.ready ? <span className="lang">{langBy(SHOWCASE[x.id]?.lang ?? x.lang).name}</span> : <span className="soon">Soon</span>}
               </div>
               <div className="card-body">
                 <h3>{x.name}</h3>
                 <p>{x.blurb}</p>
-                <button className="use" type="button" disabled={!x.ready} onClick={() => applyTemplate(x.id, x.lang, true)}>
+                <button className="use" type="button" disabled={!x.ready} onClick={() => applyTemplate(x.id, SHOWCASE[x.id]?.lang ?? x.lang, true)}>
                   {x.ready ? "Use template" : "Coming soon"}
                 </button>
               </div>

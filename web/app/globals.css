@@ -244,3 +244,19 @@ footer { padding-block: 36px 52px; border-top: 1px solid var(--line); display: f
   .toolbar .spacer { display: none; }
   .toolbar .btn { width: 100%; justify-content: center; }
 }
+
+/* ---------- showcase videos ---------- */
+.screen-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #141233; }
+.generating { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; background: rgba(7,7,13,.62); color: #fff; font-family: var(--font-display); font-weight: 700; font-size: 16px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.generating span { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,.25); border-top-color: var(--signal); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.thumb.has-video { aspect-ratio: 4 / 5; overflow: hidden; }
+.thumb.has-video video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.thumb .lang, .thumb .soon { z-index: 1; }
+.card:hover .thumb.has-video video { transform: scale(1.03); }
+.thumb.has-video video { transition: transform .4s ease; }
+.mini { background: #141233; }
+.mini::before { content: none; }
+.mini video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.mini b { z-index: 1; }
+@media (prefers-reduced-motion: reduce) { .generating span { animation: none; } .thumb.has-video video { transition: none; } }
