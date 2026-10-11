@@ -39,6 +39,18 @@ npm run demo -- --langs twi --script "Akwaaba! Nneɛma foforo aba."
 
 **Check before relying on it:** the Khaya and 9jaLingo adapters follow their official SDK docs, but neither publishes a full REST reference. The exact JSON field names in `buildBody()` (in `src/providers/khaya.ts` and `src/providers/naijalingo.ts`) need confirming on the first live call. Base URLs and paths are set in `.env`.
 
+## Website (`web/`)
+
+The ayiko.ai site is a Next.js app in `web/`, deployed on Vercel (project root directory: `web`). Every push to `main` deploys it.
+
+```bash
+cd web
+npm install
+npm run dev        # http://localhost:3000
+```
+
+The waitlist saves to the Supabase `waitlist` table (`supabase/migrations/0002_waitlist.sql`). Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel (Settings → Environment Variables); until then the form politely says the waitlist opens soon.
+
 ## Where things live
 
 | File | What it does |
