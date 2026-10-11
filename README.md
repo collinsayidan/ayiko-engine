@@ -17,8 +17,8 @@ Requires Node 20+ and FFmpeg (`brew install ffmpeg` on Mac, `sudo apt install ff
 
 ```bash
 npm install
-npm run demo          # makes a Twi short, then remixes it in English
-npm test              # 20 tests
+npm run demo          # Language Multiplier: one clip in Twi, English, Yoruba and Pidgin
+npm test              # 23 tests
 npm run typecheck
 ```
 
@@ -27,7 +27,8 @@ Mock mode stands in for the AI providers locally: the "voice" is a soft tone tim
 Options:
 
 ```bash
-npm run demo -- --lang yo --gender male --script "Ẹ káàbọ̀! Aṣọ tuntun ti dé." --image ./photo.jpg --remix pcm
+npm run demo -- --langs yo,pcm --template new-arrival --gender male --image ./photo.jpg
+npm run demo -- --langs twi --script "Akwaaba! Nneɛma foforo aba."
 ```
 
 ## Going live
@@ -47,6 +48,7 @@ npm run demo -- --lang yo --gender male --script "Ẹ káàbọ̀! Aṣọ tuntu
 | `src/providers/` | One adapter per provider: fal.ai, ElevenLabs, Khaya, 9jaLingo, plus mocks |
 | `src/captions.ts` | Captions built from the script and timed to the audio, so they work in any language |
 | `src/render.ts` | FFmpeg: loops the clip, adds voice and captions, exports 9:16, 1:1 or 16:9 MP4 |
+| `src/templates.ts` | Templates: curated motion prompts, length, format and script starters |
 | `src/credits.ts` | Prices, quotes and the credit ledger rules |
 | `src/pipeline.ts` | The captioned-short pipeline, split into steps that can be retried |
 | `src/inngest.ts` | Runs the pipeline as background jobs in production (retries, per-user limits) |
@@ -56,6 +58,7 @@ npm run demo -- --lang yo --gender male --script "Ẹ káàbọ̀! Aṣọ tuntu
 ## Design decisions
 
 - **Captions come from the script, not speech-to-text.** Speech recognition is weak for Twi, Yoruba and Pidgin, but we already know exactly what was said.
+- **Language Multiplier.** `runLanguageMultiplier` makes the AI clip once and adds each language for voice + render only: four languages cost 22 credits instead of 52. Each language is its own job, so one failing voice refunds only that language.
 - **Regenerating is cheap.** Pass `reuse.videoKey` to keep the clip and change only the language or voice: that costs 3 credits instead of 13, and saves the most expensive provider call.
 - **Credits are charged before any paid call and refunded automatically on failure.** In Postgres, `spend_credits` locks per user so two jobs can't overdraw, and unique indexes make refunds and Stripe top-ups safe to retry.
 - **Each step reads and writes storage keys**, so the same code runs in one process or as separate retryable queue steps.
