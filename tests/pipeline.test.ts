@@ -151,3 +151,19 @@ describe("runLanguageMultiplier", () => {
     expect(await ledger.balance("u")).toBe(20 - 13);
   }, 90_000);
 });
+
+describe("auto mode fallback", () => {
+  it("uses the fallback voice when a language has no live provider", async () => {
+    const fb = new FakeVoice("test-voice");
+    const router = new VoiceRouter({ khaya: new FakeVoice("khaya") }, config, undefined, fb);
+    expect(router.plan("pcm", "female")[0]!.provider.id).toBe("test-voice");
+    expect(router.plan("twi", "female")[0]!.provider.id).toBe("khaya");
+  });
+
+  it("falls back to the test voice when every live voice fails", async () => {
+    const router = new VoiceRouter({ naijalingo: new FakeVoice("naijalingo", true) }, config, undefined, new FakeVoice("test-voice"));
+    const { result, attempts } = await router.synthesize("Welcome o!", "pcm", "female");
+    expect(result.provider).toBe("test-voice");
+    expect(attempts.map((a) => a.ok)).toEqual([false, true]);
+  });
+});

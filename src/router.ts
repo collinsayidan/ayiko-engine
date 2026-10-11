@@ -36,16 +36,21 @@ export class VoiceRouter {
     private readonly config: Pick<Config, "ELEVENLABS_VOICE_FEMALE" | "ELEVENLABS_VOICE_MALE">,
     /** When set, every language is served by this provider (mock mode). */
     private readonly override?: VoiceProvider,
+    /** Auto mode: used when a language has no live provider, or all of them fail. */
+    private readonly fallback?: VoiceProvider,
   ) {}
 
   /** The ordered candidates that can actually run, for a language and gender. */
   plan(language: LanguageCode, gender: Gender): { provider: VoiceProvider; voiceId: string; providerLang: string }[] {
     const lang = LANGUAGES[language];
-    return lang.candidates.flatMap((c) => {
+    const live = lang.candidates.flatMap((c) => {
       const provider = this.override ?? this.providers[c.provider];
       if (!provider) return [];
       return [{ provider, voiceId: this.resolveVoice(c.voices[gender]), providerLang: c.providerLang }];
     });
+    if (live.length || !this.fallback || !lang.candidates[0]) return live;
+    const first = lang.candidates[0];
+    return [{ provider: this.fallback, voiceId: this.resolveVoice(first.voices[gender]), providerLang: first.providerLang }];
   }
 
   async synthesize(text: string, language: LanguageCode, gender: Gender): Promise<RoutedSpeech> {
@@ -63,6 +68,13 @@ export class VoiceRouter {
         });
         // Fall through to the next candidate.
       }
+    }
+    // Auto mode: if every live voice failed, keep the job alive with the test voice.
+    if (this.fallback && attempts.length && attempts.every((a) => a.provider !== this.fallback!.id)) {
+      const started = Date.now();
+      const result = await this.fallback.synthesize({ text, language, providerLang: language, voiceId: "fallback", gender });
+      attempts.push({ provider: this.fallback.id, voiceId: "fallback", ok: true, latencyMs: Date.now() - started });
+      return { result, attempts };
     }
     throw new NoVoiceAvailableError(language, attempts);
   }

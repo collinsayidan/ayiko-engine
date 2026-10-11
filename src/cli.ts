@@ -51,9 +51,11 @@ async function main() {
   }
   const gender = (values.gender ?? template.defaultGender) as Gender;
 
+  // Read API keys from .env if it exists (Node 20.12+).
+  try { process.loadEnvFile(".env"); } catch { /* no .env yet: fine, test stand-ins are used */ }
   const config = loadConfig({ ...process.env, AYIKO_PROVIDER_MODE: values.live ? "live" : process.env.AYIKO_PROVIDER_MODE });
   const paths = { ffmpeg: config.FFMPEG_PATH, ffprobe: config.FFPROBE_PATH };
-  const { voices, video } = buildProviders(config, paths);
+  const { voices, video, summary } = buildProviders(config, paths);
   const storage = new LocalStorage(config.LOCAL_STORAGE_DIR);
   const ledger = new InMemoryLedger();
   const jobs = new InMemoryJobStore();
@@ -63,6 +65,7 @@ async function main() {
   await ledger.grant(userId, 20, "signup_bonus");
   await ledger.grant(userId, 60, "purchase", "demo-starter-pack"); // the £5 Starter pack
   console.log(`\nAyiko engine · ${config.AYIKO_PROVIDER_MODE} mode · template "${template.name}" · balance ${await ledger.balance(userId)} credits`);
+  console.log(summary);
 
   // 1. Upload
   const imagePath = values.image ? resolve(values.image) : await makeSampleImage(config.FFMPEG_PATH);

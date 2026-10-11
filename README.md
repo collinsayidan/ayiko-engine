@@ -18,7 +18,7 @@ Requires Node 20+ and FFmpeg (`brew install ffmpeg` on Mac, `sudo apt install ff
 ```bash
 npm install
 npm run demo          # Language Multiplier: one clip in Twi, English, Yoruba and Pidgin
-npm test              # 27 tests
+npm test              # 29 tests
 npm run typecheck
 ```
 

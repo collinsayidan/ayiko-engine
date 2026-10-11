@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const Env = z.object({
-  AYIKO_PROVIDER_MODE: z.enum(["mock", "live"]).default("mock"),
+  AYIKO_PROVIDER_MODE: z.enum(["mock", "auto", "live"]).default("auto"),
 
   FAL_KEY: z.string().optional(),
   FAL_I2V_MODEL: z.string().default("fal-ai/kling-video/v2.1/standard/image-to-video"),
