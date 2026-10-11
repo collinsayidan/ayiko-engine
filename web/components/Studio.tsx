@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { TemplateIcon } from "./Icons";
 import { LazyVideo } from "./LazyVideo";
-import { LANGS, MULTI_LANGS, QUICK, SHOWCASE, TEMPLATES, estimateCredits, langBy, tplBy } from "@/lib/content";
+import { GREETINGS, LANGS, MULTI_LANGS, QUICK, SHOWCASE, TEMPLATES, estimateCredits, langBy, tplBy } from "@/lib/content";
 
 /**
  * Hero "ask box" + live phone preview + template gallery.
@@ -84,7 +84,7 @@ export function Studio({ onLanguage }: { onLanguage: (form: string) => void }) {
           <h1>Make the video. <em>Speak their language.</em></h1>
           <p className="lede">
             Describe what you want, add a photo, pick a language. Ayiko makes a ready-to-post video with a natural
-            voiceover and captions in Twi, Yoruba, Pidgin, Hausa, English and more.
+            voiceover and captions in <strong>Twi, Yorùbá, Pidgin, Hausa, English</strong> and more.
           </p>
 
           <form className="ask" onSubmit={generate} noValidate>
@@ -133,9 +133,22 @@ export function Studio({ onLanguage }: { onLanguage: (form: string) => void }) {
             ))}
           </div>
           <p className="notice" aria-live="polite">{notice}</p>
+          <p className="platforms"><span>Ready for</span><b>TikTok</b><b>Reels</b><b>YouTube Shorts</b><b>WhatsApp Status</b></p>
         </div>
 
         <div className="demo">
+          <div className="chip c1" aria-hidden="true">
+            <span className="ico"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg></span>
+            <span>Native voice<small>{l.name} · {voice === "male" ? "male" : "female"}</small></span>
+          </div>
+          <div className="chip c2" aria-hidden="true">
+            <span className="ico"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="3" /><path d="M7 12h4M13 12h4M7 15h7" /></svg></span>
+            <span>Captions<small>synced word by word</small></span>
+          </div>
+          <div className="chip c3" aria-hidden="true">
+            <span className="ico"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span>
+            <span>Ready to post<small>9:16 · about 15s</small></span>
+          </div>
           <div className="phone" role="img" aria-label="Video preview with voiceover captions">
             <div className={`screen${loading ? " loading" : ""}`}>
               <div className="backdrop" />
@@ -172,15 +185,27 @@ export function Studio({ onLanguage }: { onLanguage: (form: string) => void }) {
         </div>
       </div>
 
+      <div className="ticker" role="marquee" aria-label="Welcome in the languages Ayiko speaks">
+        <div className="ticker-track">
+          {[0, 1].map((copy) => (
+            <ul key={copy} aria-hidden={copy === 1 ? true : undefined}>
+              {GREETINGS.map(([word, name, code]) => (
+                <li key={code}><b lang={code}>{word}</b><span>{name}</span></li>
+              ))}
+            </ul>
+          ))}
+        </div>
+      </div>
+
       <section id="templates" aria-labelledby="tpl-h">
-        <div className="head-row">
+        <div className="head-row" data-reveal>
           <div>
             <div className="eyebrow">Templates</div>
-            <h2 id="tpl-h">Start from a template, not a blank prompt</h2>
+            <h2 id="tpl-h">Start from a template, <em>not a blank prompt</em></h2>
           </div>
           <p className="sub">Each one sets the camera move, length and a script starter. Tap one and it fills in the box above.</p>
         </div>
-        <div className="grid">
+        <div className="grid" data-reveal>
           {TEMPLATES.map((x) => (
             <article className="card" key={x.id}>
               <div className={`thumb ${x.tone}${SHOWCASE[x.id] ? " has-video" : ""}`}>

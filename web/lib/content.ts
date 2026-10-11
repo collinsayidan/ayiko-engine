@@ -63,6 +63,18 @@ export const SHOWCASE: Record<string, Showcase> = {
   "creator-short": { lang: "en", caption: "Here's my top tip", meaning: "English · a creator tip with a follow button" },
   "menu-reel": { lang: "twi", caption: "Jollof ne nkokɔ aba!", meaning: "Twi · “Jollof and chicken are here! Buy yours today.”" },
 };
+/** "Welcome" in the languages Ayiko speaks, for the hero ticker */
+export const GREETINGS: [word: string, language: string, code: string][] = [
+  ["Akwaaba", "Twi", "tw"],
+  ["Ẹ káàbọ̀", "Yorùbá", "yo"],
+  ["Welcome o", "Pidgin", "pcm"],
+  ["Barka da zuwa", "Hausa", "ha"],
+  ["Welcome", "English", "en"],
+  ["Bienvenue", "Français", "fr"],
+  ["Karibu", "Swahili", "sw"],
+  ["Nnọọ", "Igbo", "ig"],
+  ["Woezɔ", "Ewe", "ee"],
+];
 /** Languages with a Language Multiplier video of the serum promo */
 export const MULTI_LANGS = ["twi", "yo", "pcm", "ha", "en", "fr"];
 

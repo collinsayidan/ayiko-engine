@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LogoMark } from "./Icons";
 import { LazyVideo } from "./LazyVideo";
 import { Studio } from "./Studio";
@@ -9,10 +9,35 @@ import { MULTI_LANGS, langBy } from "@/lib/content";
 
 export function Landing() {
   const [wlLang, setWlLang] = useState("Twi");
+  const [scrolled, setScrolled] = useState(false);
+
+  // Frosted nav once the page scrolls
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Gentle reveal as sections enter the viewport (skipped for reduced motion)
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
+    const els = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }),
+      { rootMargin: "0px 0px -8% 0px", threshold: 0.08 },
+    );
+    els.forEach((el) => {
+      if (el.getBoundingClientRect().top < window.innerHeight) el.classList.add("in");
+      else io.observe(el);
+    });
+    document.documentElement.classList.add("reveal-ready");
+    return () => io.disconnect();
+  }, []);
 
   return (
     <div className="wrap">
-      <header className="nav">
+      <header className={`nav${scrolled ? " scrolled" : ""}`}>
         <a className="logo" href="#top" aria-label="Ayiko home">
           <LogoMark />
           <span>ayiko<em>.ai</em></span>
@@ -28,11 +53,12 @@ export function Landing() {
       <main id="top">
         <Studio onLanguage={setWlLang} />
 
+
         <section id="multiplier" aria-labelledby="multi-h">
-          <div className="multi">
+          <div className="multi" data-reveal>
             <div>
               <div className="eyebrow">Language Multiplier</div>
-              <h2 id="multi-h">One video. Every language your customers speak.</h2>
+              <h2 id="multi-h">One video. <em>Every language</em> your customers speak.</h2>
               <p className="sub">
                 Ayiko makes the AI clip once, then adds each language with its own voice and captions. Extra languages
                 cost a fraction of a new video.
@@ -57,8 +83,8 @@ export function Landing() {
 
         <section aria-labelledby="how-h">
           <div className="eyebrow">How it works</div>
-          <h2 id="how-h">From one photo to a finished video in minutes</h2>
-          <ol className="steps">
+          <h2 id="how-h">From one photo to a finished video <em>in minutes</em></h2>
+          <ol className="steps" data-reveal>
             <li><h3>Describe and upload</h3><p>Pick a template, add your product photo or flyer, and write what you want said. Or let Ayiko suggest the words.</p></li>
             <li><h3>Choose voices</h3><p>Select one language or several, and a voice that sounds like your customers.</p></li>
             <li><h3>Post everywhere</h3><p>Download captioned videos for TikTok, Reels, YouTube Shorts and WhatsApp Status. Regenerate any one with a tap.</p></li>
@@ -67,9 +93,9 @@ export function Landing() {
 
         <section aria-labelledby="lang-h">
           <div className="eyebrow">Languages</div>
-          <h2 id="lang-h">Starting with the voices other tools ignore</h2>
+          <h2 id="lang-h">Starting with the voices <em>other tools ignore</em></h2>
           <p className="sub">Every voice is tested with native speakers before it goes live.</p>
-          <div className="table-wrap">
+          <div className="table-wrap" data-reveal>
             <table>
               <thead><tr><th>Language</th><th>Code</th><th>Spoken in</th><th>Status</th></tr></thead>
               <tbody>
@@ -87,11 +113,11 @@ export function Landing() {
 
         <section id="pricing" aria-labelledby="price-h">
           <div className="eyebrow">Pricing</div>
-          <h2 id="price-h">Pay for what you make. No surprises.</h2>
+          <h2 id="price-h">Pay for what you make. <em>No surprises.</em></h2>
           <p className="sub">
             A full video is about 13 credits; an extra language about 3. Failed videos are refunded automatically.
           </p>
-          <div className="plans">
+          <div className="plans" data-reveal>
             <div className="plan"><h3>Free trial</h3><div className="price">£0</div><ul><li>20 credits once</li><li>About 1 video plus extras</li><li>Small ayiko.ai mark</li></ul></div>
             <div className="plan"><h3>Starter pack</h3><div className="price">£5 <small>one-off</small></div><ul><li>60 credits</li><li>About 4 videos</li><li>No watermark</li></ul></div>
             <div className="plan pop"><span className="badge">Most popular</span><h3>Creator</h3><div className="price">£15 <small>/ month</small></div><ul><li>220 credits a month</li><li>About 16 videos</li><li>Language Multiplier</li></ul></div>
@@ -101,7 +127,7 @@ export function Landing() {
         </section>
 
         <section aria-labelledby="name-h">
-          <div className="story">
+          <div className="story" data-reveal>
             <div className="word" id="name-h">Ayekoo<small>&ldquo;well done&rdquo;</small></div>
             <p>
               Ayiko comes from <i>ayekoo</i>, what people say when work is done well.{" "}
@@ -111,11 +137,16 @@ export function Landing() {
           </div>
         </section>
 
-        <section className="join" id="join" aria-labelledby="join-h">
+        <section className="join" id="join" aria-labelledby="join-h" data-reveal>
           <div>
             <div className="eyebrow">Early access</div>
             <h2 id="join-h">Be first to make videos with Ayiko</h2>
             <p className="sub">Join the waitlist for the private beta. Beta users get free credits and a say in which languages come next.</p>
+            <ul className="perks">
+              <li>Free credits when the beta opens</li>
+              <li>Vote on the next languages and voices</li>
+              <li>Early-supporter pricing, locked in</li>
+            </ul>
           </div>
           <div>
             <Waitlist language={wlLang} setLanguage={setWlLang} />
@@ -124,8 +155,17 @@ export function Landing() {
       </main>
 
       <footer>
-        <span>© 2026 Ayiko.ai · Edinburgh, Scotland</span>
-        <span>Preview captions are examples. Real generation opens in the beta.</span>
+        <div className="foot-brand">
+          <a className="logo" href="#top" aria-label="Ayiko home"><LogoMark /><span>ayiko<em>.ai</em></span></a>
+          <span>Make the video. Speak their language.</span>
+        </div>
+        <nav className="foot-links" aria-label="Footer">
+          <a href="#templates">Templates</a>
+          <a href="#multiplier">Multiplier</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#join">Waitlist</a>
+        </nav>
+        <p className="foot-note">© 2026 Ayiko.ai · Edinburgh, Scotland · Showcase videos are examples made with Ayiko&apos;s engine. Real generation opens in the beta.</p>
       </footer>
     </div>
   );
