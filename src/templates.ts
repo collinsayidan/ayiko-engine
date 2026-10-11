@@ -18,6 +18,8 @@ export interface Template {
   motionPrompt: string;
   /** Shown as placeholder text in the script box */
   scriptStarter: string;
+  /** Default headline tag at the top of the video (the user can change or translate it) */
+  headline: string;
   defaultGender: Gender;
   /** What the user uploads */
   input: "product_photo" | "flyer" | "photo" | "menu_photo";
@@ -27,6 +29,7 @@ export interface Template {
 export const TEMPLATES: Template[] = [
   {
     id: "product-promo",
+    headline: "New in",
     name: "Product promo",
     blurb: "One product photo becomes a 15-second ad with a voiceover.",
     aspect: "9:16", videoDurationS: 5, defaultGender: "female", input: "product_photo", status: "ready",
@@ -35,6 +38,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "new-arrival",
+    headline: "Just dropped",
     name: "New arrival",
     blurb: "Announce fresh stock with an energetic reveal.",
     aspect: "9:16", videoDurationS: 5, defaultGender: "male", input: "product_photo", status: "ready",
@@ -43,6 +47,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "event-promo",
+    headline: "You’re invited",
     name: "Event promo",
     blurb: "Turn a flyer into a moving invitation for your event.",
     aspect: "9:16", videoDurationS: 5, defaultGender: "male", input: "flyer", status: "ready",
@@ -51,6 +56,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "church-announcement",
+    headline: "This Sunday",
     name: "Church announcement",
     blurb: "Sunday notices and programmes, ready before the service.",
     aspect: "9:16", videoDurationS: 5, defaultGender: "male", input: "flyer", status: "ready",
@@ -59,6 +65,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "creator-short",
+    headline: "",
     name: "Creator short",
     blurb: "Your photo, your words, posted in two languages.",
     aspect: "9:16", videoDurationS: 5, defaultGender: "female", input: "photo", status: "ready",
@@ -67,6 +74,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "menu-reel",
+    headline: "Today’s special",
     name: "Menu reel",
     blurb: "A dish photo becomes a mouth-watering reel for your restaurant.",
     aspect: "9:16", videoDurationS: 5, defaultGender: "female", input: "menu_photo", status: "ready",
@@ -75,6 +83,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "url-to-video",
+    headline: "",
     name: "Link to video",
     blurb: "Paste a product link and Ayiko builds the ad.",
     aspect: "9:16", videoDurationS: 5, defaultGender: "female", input: "product_photo", status: "soon",
@@ -83,6 +92,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "talking-avatar",
+    headline: "",
     name: "Talking presenter",
     blurb: "A presenter who speaks your script, lip-synced.",
     aspect: "9:16", videoDurationS: 10, defaultGender: "female", input: "photo", status: "soon",

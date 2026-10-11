@@ -4,6 +4,7 @@ import { isLanguageCode, type Gender, type LanguageCode } from "./languages";
 import { DEFAULT_FFMPEG, normaliseAudio, type FfmpegPaths } from "./media";
 import type { Moderator } from "./moderation";
 import type { MediaBytes, VideoProvider } from "./providers/types";
+import type { CaptionStyle } from "./captions";
 import { renderShort, type AspectRatio } from "./render";
 import type { VoiceRouter } from "./router";
 import { keys, type Storage } from "./storage";
@@ -29,6 +30,11 @@ export interface ShortRequest {
   aspect?: AspectRatio;
   /** Free plan outputs carry a small "ayiko.ai" mark */
   watermark?: boolean;
+  /** On-screen design: short headline tag, end-card brand name and call to action */
+  headline?: string;
+  brandName?: string;
+  cta?: string;
+  captionStyle?: CaptionStyle;
   /** Regenerate cheaply: keep the clip and change only the voice, or the reverse */
   reuse?: { videoKey?: string; voiceKey?: string };
 }
@@ -152,7 +158,8 @@ export async function stepRender(
   const started = Date.now();
   const [voice, video] = await Promise.all([deps.storage.get(voiceKey), deps.storage.get(videoKey)]);
   const out = await renderShort({
-    video, voice, script: req.script, aspect: req.aspect, font: deps.captionFont,
+    video, voice, script: req.script, aspect: req.aspect, captionStyle: req.captionStyle,
+    headline: req.headline, brand: req.brandName, cta: req.cta,
     watermark: req.watermark ? "ayiko.ai" : undefined, paths: deps.paths,
   });
   const outputKey = await deps.storage.put(keys.output(req.userId, jobId), out.video);

@@ -52,8 +52,9 @@ export class MockVideoProvider implements VideoProvider {
         "-y", "-hide_banner", "-loglevel", "error",
         "-loop", "1", "-i", img,
         "-vf",
-        "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1," +
-          `zoompan=z='min(zoom+0.0012,1.18)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30`,
+        // Scale up first so the slow push-in is smooth, with a gentle drift upwards.
+        "scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,setsar=1," +
+          `zoompan=z='1+0.14*on/${frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-on*0.25':d=1:s=1080x1920:fps=30`,
         "-frames:v", String(frames), "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", out,
       ]);
       return { bytes: await readFile(out), mime: "video/mp4", ext: "mp4", provider: this.id, model: "mock-zoom", costUsd: 0 };

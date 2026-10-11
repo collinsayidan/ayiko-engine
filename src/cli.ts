@@ -37,6 +37,9 @@ async function main() {
       image: { type: "string" },
       out: { type: "string", default: "./out" },
       live: { type: "boolean", default: false },
+      headline: { type: "string" },
+      brand: { type: "string", default: "AMA Glow Serum" },
+      cta: { type: "string", default: "Order on WhatsApp" },
     },
   });
 
@@ -76,7 +79,11 @@ async function main() {
   report(quote.lines, quote.total);
 
   const results = await runLanguageMultiplier(
-    { userId, imageKey, gender, watermark: true, motionPrompt: template.motionPrompt, videoDurationS: template.videoDurationS, aspect: template.aspect },
+    {
+      userId, imageKey, gender, watermark: true,
+      motionPrompt: template.motionPrompt, videoDurationS: template.videoDurationS, aspect: template.aspect,
+      headline: values.headline ?? template.headline, brandName: values.brand, cta: values.cta,
+    },
     items,
     deps,
   );
@@ -108,6 +115,8 @@ function report(lines: { item: string; credits: number }[], total: number) {
 }
 
 async function makeSampleImage(ffmpeg: string): Promise<string> {
+  const bundled = resolve("samples/sample-product.jpg"); // rendered by scripts/make-sample.py
+  if (existsSync(bundled)) return bundled;
   const file = resolve("samples/sample-product.png");
   if (existsSync(file)) return file;
   await mkdir("samples", { recursive: true });

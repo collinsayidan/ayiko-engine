@@ -82,23 +82,75 @@ export function assEscape(text: string): string {
   return text.replace(/\\/g, "/").replace(/\{/g, "(").replace(/\}/g, ")").replace(/\n/g, " ");
 }
 
+export type CaptionStyle = "pop" | "box";
+
 export interface AssOptions {
   width?: number;
   height?: number;
-  font?: string;
-  /** Total video length, used for the watermark line */
+  /** Total video length (voiceover plus end card) */
   durationS: number;
+  /** When the voiceover ends and the end card begins. Defaults to durationS. */
+  voiceEndS?: number;
+  /** "pop": bold white words, the spoken word lights up (default). "box": dark text on a white box. */
+  style?: CaptionStyle;
+  /** Short title shown at the top for the first two seconds, e.g. "NEW IN" */
+  headline?: string;
+  /** End card: brand name and call to action, e.g. "Order on WhatsApp" */
+  brand?: string;
+  cta?: string;
   watermark?: string;
 }
 
+// Colours are &HAABBGGRR
+const WHITE = "&H00FFFFFF";
+const INK = "&H002A1316"; // #16132A
+const OUTLINE = "&H00140B0B"; // #0B0B14
+const SHADOW = "&H96000000";
+const SIGNAL = "&H00E8D345"; // #45D3E8 cyan: the spoken word
+const ACCENT = "&H00FF6854"; // #5468FF cobalt: headline tag and CTA pill
+
+/** Split a cue's time across its words, in proportion to their length. */
+export function wordTimings(cue: Cue): { word: string; start: number; end: number }[] {
+  const words = cue.text.split(" ").filter(Boolean);
+  const weights = words.map((w) => Math.max(1, [...w].length));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let t = cue.start;
+  return words.map((word, i) => {
+    const len = ((cue.end - cue.start) * weights[i]!) / total;
+    const out = { word, start: t, end: t + len };
+    t += len;
+    return out;
+  });
+}
+
+/** An ASS vector path for a rounded rectangle of width w, height h, corner radius r. */
+export function roundedRect(w: number, h: number, r: number): string {
+  const R = Math.min(r, h / 2, w / 2);
+  const n = (x: number) => Math.round(x);
+  return [
+    `m ${n(R)} 0`, `l ${n(w - R)} 0`, `b ${n(w)} 0 ${n(w)} 0 ${n(w)} ${n(R)}`,
+    `l ${n(w)} ${n(h - R)}`, `b ${n(w)} ${n(h)} ${n(w)} ${n(h)} ${n(w - R)} ${n(h)}`,
+    `l ${n(R)} ${n(h)}`, `b 0 ${n(h)} 0 ${n(h)} 0 ${n(h - R)}`,
+    `l 0 ${n(R)}`, `b 0 0 0 0 ${n(R)} 0`,
+  ].join(" ");
+}
+
 /**
- * Ayiko caption style: bold dark text on a white box, lower third, a quick
- * fade on each phrase. Matches the landing page look.
+ * Builds the subtitle file that carries Ayiko's on-screen design:
+ * headline tag, word-by-word captions, end card and watermark.
+ * Fonts are the bundled Inter weights (assets/fonts), so every machine
+ * renders the same and Twi/Yoruba characters always display.
  */
 export function buildAss(cues: Cue[], opts: AssOptions): string {
   const w = opts.width ?? 1080;
   const h = opts.height ?? 1920;
-  const font = opts.font ?? "Inter";
+  const k = w / 1080; // scale everything for 1:1 and 16:9
+  const px = (n: number) => Math.round(n * k);
+  const voiceEnd = Math.min(opts.voiceEndS ?? opts.durationS, opts.durationS);
+  const style = opts.style ?? "pop";
+  const capV = h >= w ? px(330) : px(110);
+  const cx = Math.round(w / 2);
+
   const lines = [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -109,16 +161,61 @@ export function buildAss(cues: Cue[], opts: AssOptions): string {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    // Colours are &HAABBGGRR. Text #16132A, box white.
-    `Style: Caption,${font},76,&H002A1316,&H002A1316,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,3,18,0,2,90,90,420,1`,
-    `Style: Mark,${font},34,&H00FFFFFF,&H00FFFFFF,&H64000000,&H64000000,-1,0,0,0,100,100,1,0,1,2,0,9,40,40,60,1`,
+    `Style: Pop,Inter Black,${px(84)},${WHITE},${WHITE},${OUTLINE},${SHADOW},0,0,0,0,100,100,0,0,1,${px(7)},${px(4)},2,${px(80)},${px(80)},${capV},1`,
+    `Style: Box,Inter ExtraBold,${px(74)},${INK},${INK},${WHITE},&H00000000,0,0,0,0,100,100,0,0,3,${px(18)},0,2,${px(90)},${px(90)},${capV},1`,
+    `Style: Title,Inter Black,${px(64)},${WHITE},${WHITE},${ACCENT},&H00000000,0,0,0,0,100,100,${px(3)},0,3,${px(20)},0,8,${px(60)},${px(60)},0,1`,
+    `Style: Brand,Inter Black,${px(100)},${WHITE},${WHITE},${OUTLINE},${SHADOW},0,0,0,0,100,100,0,0,1,0,${px(5)},5,${px(60)},${px(60)},0,1`,
+    `Style: Cta,Inter ExtraBold,${px(48)},${WHITE},${WHITE},${OUTLINE},&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1`,
+    `Style: Mark,Inter SemiBold,${px(32)},&H33FFFFFF,&H33FFFFFF,&H80000000,&H80000000,0,0,0,0,100,100,1,0,1,${px(2)},0,9,${px(40)},${px(40)},${px(60)},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-    ...cues.map((c) => `Dialogue: 0,${assTime(c.start)},${assTime(c.end)},Caption,,0,0,0,,{\\fad(80,60)}${assEscape(c.text)}`),
   ];
+  const ev = (layer: number, start: number, end: number, st: string, text: string) =>
+    lines.push(`Dialogue: ${layer},${assTime(start)},${assTime(end)},${st},,0,0,0,,${text}`);
+
+  // Captions
+  for (const cue of cues) {
+    if (style === "box") {
+      ev(0, cue.start, cue.end, "Box", `{\\fad(80,60)}${assEscape(cue.text)}`);
+      continue;
+    }
+    const words = wordTimings(cue);
+    words.forEach((wd, i) => {
+      const text = words
+        .map((o, j) => (j === i ? `{\\c${SIGNAL}&\\fscx112\\fscy112}${assEscape(o.word)}{\\r}` : assEscape(o.word)))
+        .join(" ");
+      ev(0, wd.start, wd.end, "Pop", (i === 0 ? "{\\fad(90,0)}" : "") + text);
+    });
+  }
+
+  // Headline tag slides in at the top
+  if (opts.headline?.trim()) {
+    const end = Math.min(2.6, voiceEnd);
+    ev(2, 0.15, end, "Title", `{\\an8\\move(${cx},${px(150)},${cx},${px(200)},0,300)\\fad(200,250)}${assEscape(opts.headline.trim().toUpperCase())}`);
+  }
+
+  // End card: brand name and a call-to-action pill
+  if (voiceEnd < opts.durationS && (opts.brand?.trim() || opts.cta?.trim())) {
+    const mid = h / 2;
+    if (opts.brand?.trim()) {
+      ev(4, voiceEnd, opts.durationS, "Brand", `{\\an5\\pos(${cx},${Math.round(mid - px(70))})\\fad(250,0)\\fscx86\\fscy86\\t(0,260,\\fscx100\\fscy100)}${assEscape(opts.brand.trim())}`);
+    }
+    if (opts.cta?.trim()) {
+      const cta = assEscape(opts.cta.trim());
+      const pw = px([...cta].length * 29 + 120);
+      const ph = px(104);
+      const y = Math.round(mid + px(90));
+      ev(3, voiceEnd + 0.15, opts.durationS, "Cta", `{\\an5\\pos(${cx},${y})\\p1\\bord0\\shad0\\1c${ACCENT}&\\fad(250,0)}${roundedRect(pw, ph, ph / 2)}{\\p0}`);
+      ev(4, voiceEnd + 0.15, opts.durationS, "Cta", `{\\an5\\pos(${cx},${y})\\fad(250,0)}${cta}`);
+    }
+  }
+
   if (opts.watermark) {
-    lines.push(`Dialogue: 1,${assTime(0)},${assTime(opts.durationS)},Mark,,0,0,0,,${assEscape(opts.watermark)}`);
+    ev(1, 0, voiceEnd, "Mark", assEscape(opts.watermark));
+    if (voiceEnd < opts.durationS) {
+      ev(1, voiceEnd, opts.durationS, "Mark", `{\\an2\\pos(${cx},${h - px(110)})\\fad(250,0)}Made with ${assEscape(opts.watermark)}`);
+    }
   }
   return lines.join("\n") + "\n";
 }

@@ -1,6 +1,7 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { buildAss, splitPhrases, timeCues, type Cue } from "./captions";
+import { fileURLToPath } from "node:url";
+import { buildAss, splitPhrases, timeCues, type CaptionStyle, type Cue } from "./captions";
 import { DEFAULT_FFMPEG, probeDuration, run, withTempDir, type FfmpegPaths } from "./media";
 import type { MediaBytes } from "./providers/types";
 
@@ -12,12 +13,18 @@ const SIZES: Record<AspectRatio, [number, number]> = {
   "16:9": [1920, 1080],
 };
 
+/** Bundled Inter weights; they cover Twi (ɛ ɔ) and Yoruba tone marks. */
+export const FONTS_DIR = fileURLToPath(new URL("../assets/fonts/", import.meta.url));
+
 export interface RenderInput {
   video: MediaBytes;
   voice: MediaBytes;
   script: string;
   aspect?: AspectRatio;
-  font?: string;
+  captionStyle?: CaptionStyle;
+  headline?: string;
+  brand?: string;
+  cta?: string;
   watermark?: string;
   paths?: FfmpegPaths;
 }
@@ -28,38 +35,61 @@ export interface RenderOutput {
   cues: Cue[];
 }
 
+const END_CARD_S = 2.2;
+const TAIL_S = 0.6;
+
 /**
- * Joins the AI clip, the voiceover and the captions into one MP4.
- * The clip loops to cover the voiceover, then holds for a short tail.
+ * Joins the AI clip, the voiceover and the on-screen design into one MP4:
+ * a light colour grade, vignette and fine grain for a filmed look; the clip
+ * loops under the voiceover; then a blurred end card with the brand and a
+ * call to action. Fades in and out so it loops cleanly on social feeds.
  */
 export async function renderShort(input: RenderInput): Promise<RenderOutput> {
   const paths = input.paths ?? DEFAULT_FFMPEG;
   const [w, h] = SIZES[input.aspect ?? "9:16"];
-  const tailS = 0.6;
 
   return withTempDir(async (dir) => {
     await writeFile(join(dir, `clip.${input.video.ext}`), input.video.bytes);
     await writeFile(join(dir, `voice.${input.voice.ext}`), input.voice.bytes);
+    await mkdir(join(dir, "fonts"));
+    for (const f of await readdir(FONTS_DIR)) {
+      if (f.endsWith(".ttf")) await copyFile(join(FONTS_DIR, f), join(dir, "fonts", f));
+    }
 
     const voiceS = await probeDuration(join(dir, `voice.${input.voice.ext}`), paths);
-    const durationS = Math.round((voiceS + tailS) * 100) / 100;
-    const cues = timeCues(splitPhrases(input.script, input.aspect === "16:9" ? 42 : 28), voiceS);
-    const ass = buildAss(cues, { width: w, height: h, font: input.font, durationS, watermark: input.watermark });
+    const hasEndCard = Boolean(input.brand?.trim() || input.cta?.trim());
+    const voiceEnd = Math.round((voiceS + 0.25) * 100) / 100;
+    const durationS = Math.round((voiceEnd + (hasEndCard ? END_CARD_S : TAIL_S)) * 100) / 100;
+
+    const cues = timeCues(splitPhrases(input.script, input.aspect === "16:9" ? 34 : 20), voiceS);
+    const ass = buildAss(cues, {
+      width: w, height: h, durationS, voiceEndS: voiceEnd, style: input.captionStyle,
+      headline: input.headline, brand: input.brand, cta: input.cta, watermark: input.watermark,
+    });
     await writeFile(join(dir, "captions.ass"), ass, "utf8");
 
-    // cwd = dir so the ass filter gets a plain relative filename (no path escaping).
+    const endFx = hasEndCard
+      ? `,boxblur=luma_radius=22:luma_power=2:chroma_radius=22:chroma_power=2:enable='gte(t,${voiceEnd})',eq=brightness=-0.16:enable='gte(t,${voiceEnd})'`
+      : "";
+    const video =
+      `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,fps=30,` +
+      `eq=contrast=1.06:saturation=1.12:brightness=0.01,vignette=angle=PI/5,noise=alls=4:allf=t` +
+      endFx +
+      `,fade=t=in:st=0:d=0.35,fade=t=out:st=${(durationS - 0.4).toFixed(2)}:d=0.4` +
+      `,ass=captions.ass:fontsdir=fonts[v]`;
+    const audio = `[1:a]apad=pad_dur=${(durationS - voiceS + 0.1).toFixed(2)},afade=t=out:st=${(durationS - 0.5).toFixed(2)}:d=0.5[a]`;
+
+    // cwd = dir so filters get plain relative names (no Windows path escaping).
     await run(
       paths.ffmpeg,
       [
         "-y", "-hide_banner", "-loglevel", "error",
         "-stream_loop", "-1", "-i", `clip.${input.video.ext}`,
         "-i", `voice.${input.voice.ext}`,
-        "-filter_complex",
-        `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,fps=30,ass=captions.ass[v];` +
-          `[1:a]apad=pad_dur=${tailS}[a]`,
+        "-filter_complex", `${video};${audio}`,
         "-map", "[v]", "-map", "[a]",
         "-t", String(durationS),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "160k",
         "-movflags", "+faststart",
         "out.mp4",
