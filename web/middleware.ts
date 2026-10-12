@@ -7,6 +7,16 @@ export async function middleware(request: NextRequest) {
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return NextResponse.next();
 
+  // Sign-in links sometimes land on the wrong page (e.g. the Site URL "/")
+  // with their one-time code attached. Send them to the right handler.
+  const { pathname, searchParams } = request.nextUrl;
+  if (!pathname.startsWith("/auth/") && (searchParams.has("code") || searchParams.has("token_hash"))) {
+    const to = request.nextUrl.clone();
+    to.pathname = searchParams.has("token_hash") ? "/auth/confirm" : "/auth/callback";
+    if (!to.searchParams.has("next")) to.searchParams.set("next", "/app");
+    return NextResponse.redirect(to);
+  }
+
   let response = NextResponse.next({ request });
   const supabase = createServerClient(url, key, {
     cookies: {
@@ -30,5 +40,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/admin", "/login", "/auth/:path*", "/api/:path*"],
+  matcher: ["/", "/app/:path*", "/admin", "/login", "/auth/:path*", "/api/:path*"],
 };

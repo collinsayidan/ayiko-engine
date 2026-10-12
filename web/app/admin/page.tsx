@@ -12,7 +12,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const user = await currentUser();
   if (!user) redirect("/login?next=/admin");
   const admins = (process.env.ADMIN_EMAILS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  if (!user.email || !admins.includes(user.email.toLowerCase())) notFound();
+  if (!user.email || !admins.includes(user.email.toLowerCase())) redirect("/app");
   const db = supabaseAdmin();
   if (!db) notFound();
 
