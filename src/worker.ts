@@ -1,9 +1,11 @@
 import { hostname } from "node:os";
 import { pathToFileURL } from "node:url";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cleanDesign } from "./captions";
 import { loadConfig } from "./config";
 import { isLanguageCode, LANGUAGES, type LanguageCode } from "./languages";
-import { BasicModerator } from "./moderation";
+import { buildModerator } from "./moderation";
+import { renderReadyEmail, sendWithResend } from "./email";
 import { InvalidRequestError, stepRender, stepVideo, stepVoice, type EngineDeps, type ShortRequest } from "./pipeline";
 import { buildProviders } from "./providers";
 import { buildStorage } from "./storage";
@@ -32,6 +34,15 @@ export interface QueuedJob {
   attempts: number;
   clip_key: string | null;
   voice_key: string | null;
+  batch_id?: string | null;
+}
+
+/** Who to email when a generation finishes, and what to say. */
+export interface NotifyTarget {
+  to: string;
+  name?: string;
+  title: string;
+  videos: { language: string; ok: boolean }[];
 }
 
 /** Everything the worker needs from the database. */
@@ -45,6 +56,8 @@ export interface Queue {
   reap(): Promise<number>;
   /** Tell the website this worker is online and which languages it can voice. */
   announce(workerId: string, languages: string[], info: Record<string, unknown>): Promise<void>;
+  /** If every job in the batch is done and nobody was told yet, claim the email and return who to send it to. */
+  notification?(batchId: string): Promise<NotifyTarget | undefined>;
 }
 
 export class SupabaseQueue implements Queue {
@@ -84,6 +97,27 @@ export class SupabaseQueue implements Queue {
     if (error) throw error;
     return (data as number) ?? 0;
   }
+  async notification(batchId: string): Promise<NotifyTarget | undefined> {
+    const { data: userId, error } = await this.db.rpc("claim_batch_notification", { p_batch: batchId });
+    if (error) throw error;
+    if (!userId) return undefined;
+    const [{ data: jobs }, { data: profile }, { data: auth }] = await Promise.all([
+      this.db.from("jobs").select("language, status, projects(title)").eq("batch_id", batchId),
+      this.db.from("profiles").select("display_name, email_updates").eq("id", userId).maybeSingle(),
+      this.db.auth.admin.getUserById(userId as string),
+    ]);
+    const email = auth?.user?.email;
+    if (!email || profile?.email_updates === false || !jobs?.length) return undefined;
+    const project = jobs[0]!.projects as { title?: string } | { title?: string }[] | null;
+    const title = (Array.isArray(project) ? project[0]?.title : project?.title) ?? "your video";
+    const meta = auth.user?.user_metadata ?? {};
+    return {
+      to: email,
+      name: (meta.full_name as string | undefined) ?? (meta.name as string | undefined) ?? (profile?.display_name as string | undefined),
+      title,
+      videos: jobs.map((j) => ({ language: j.language as string, ok: j.status === "succeeded" })),
+    };
+  }
   async announce(workerId: string, languages: string[], info: Record<string, unknown>) {
     const { error } = await this.db
       .from("worker_status")
@@ -99,7 +133,7 @@ export function availableLanguages(deps: EngineDeps): LanguageCode[] {
   );
 }
 
-const FIELDS = ["imageKey", "script", "gender", "motionPrompt", "videoDurationS", "aspect", "watermark", "headline", "brandName", "cta", "captionStyle"] as const;
+const FIELDS = ["imageKey", "script", "gender", "motionPrompt", "videoDurationS", "aspect", "watermark", "headline", "brandName", "cta", "captionStyle", "design"] as const;
 
 /** Rebuild a pipeline request from the stored job. The user and language always come from the row, not the JSON. */
 export function requestFromJob(job: QueuedJob): ShortRequest {
@@ -112,6 +146,8 @@ export function requestFromJob(job: QueuedJob): ShortRequest {
   }
   if (req.gender !== "female" && req.gender !== "male") req.gender = "female";
   if (req.videoDurationS !== 10) req.videoDurationS = 5;
+  if (req.captionStyle !== "box") req.captionStyle = "pop";
+  req.design = cleanDesign(r.design);
   return req;
 }
 
@@ -125,6 +161,8 @@ export interface ProcessOptions {
   workerId: string;
   heartbeatMs?: number;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
+  /** Called after a job finishes (either way); sends the "ready" email when the whole batch is done. */
+  notify?: (job: QueuedJob) => Promise<void>;
 }
 
 /** Make one video. Never throws: success or a refunded failure is written to the queue. */
@@ -143,6 +181,10 @@ export async function processJob(job: QueuedJob, queue: Queue, deps: EngineDeps,
       videoKey = await queue.clipKeyOf(job.depends_on);
       if (!videoKey) throw new Error(`lead job ${job.depends_on} has no clip`);
     }
+    if (!videoKey && deps.moderator.checkImage) {
+      const photo = await deps.moderator.checkImage(await deps.storage.get(req.imageKey));
+      if (!photo.ok) throw new InvalidRequestError(photo.reason);
+    }
     if (!job.voice_key && deps.voices.plan(req.language, req.gender).length === 0) {
       throw new InvalidRequestError(`No voice is available for ${req.language} yet.`);
     }
@@ -155,6 +197,7 @@ export async function processJob(job: QueuedJob, queue: Queue, deps: EngineDeps,
     const out = await stepRender(job.id, run, voiceKey, clipKey, deps);
     await queue.succeed(job.id, out.outputKey, out.durationS);
     log("job succeeded", { job: job.id, language: job.language, seconds: Math.round((Date.now() - t0) / 1000) });
+    await notifySafely(job, opts);
     return "succeeded";
   } catch (err) {
     log("job failed", { job: job.id, language: job.language, error: err instanceof Error ? err.message : String(err) });
@@ -164,10 +207,31 @@ export async function processJob(job: QueuedJob, queue: Queue, deps: EngineDeps,
       // If even this fails, the stale-job reaper refunds it later.
       log("could not mark job failed", { job: job.id, error: e instanceof Error ? e.message : String(e) });
     }
+    await notifySafely(job, opts);
     return "failed";
   } finally {
     clearInterval(beat);
   }
+}
+
+async function notifySafely(job: QueuedJob, opts: ProcessOptions) {
+  // Edits from the canvas are quick re-renders; no email for those.
+  if (!opts.notify || (job.request as { editOf?: string })?.editOf) return;
+  try {
+    await opts.notify(job);
+  } catch (err) {
+    opts.log?.("ready email failed", { job: job.id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/** Build the notify hook: claim the batch's email, then send it with Resend. */
+export function emailNotifier(queue: Queue, send: (t: NotifyTarget) => Promise<void>): ProcessOptions["notify"] {
+  if (!queue.notification) return undefined;
+  return async (job) => {
+    if (!job.batch_id) return;
+    const target = await queue.notification!(job.batch_id);
+    if (target) await send(target);
+  };
 }
 
 export interface WorkerHandle {
@@ -177,7 +241,7 @@ export interface WorkerHandle {
 /** Run `concurrency` claim-and-process loops until stopped. */
 export function startWorker(
   queue: Queue, deps: EngineDeps,
-  o: { workerId: string; concurrency: number; pollMs: number; info?: Record<string, unknown>; log?: ProcessOptions["log"] },
+  o: { workerId: string; concurrency: number; pollMs: number; info?: Record<string, unknown>; log?: ProcessOptions["log"]; notify?: ProcessOptions["notify"] },
 ): WorkerHandle {
   const log = o.log ?? (() => {});
   let stopping = false;
@@ -199,7 +263,7 @@ export function startWorker(
       }
       if (!job) { await sleep(o.pollMs); continue; }
       log("job claimed", { slot: n, job: job.id, language: job.language, attempt: job.attempts });
-      await processJob(job, queue, deps, { workerId: o.workerId, log });
+      await processJob(job, queue, deps, { workerId: o.workerId, log, notify: o.notify });
     }
   }
 
@@ -231,7 +295,7 @@ async function main() {
     storage: buildStorage(config, db),
     ledger: new SupabaseLedger(db),
     jobs: new SupabaseJobStore(db),
-    moderator: new BasicModerator(),
+    moderator: buildModerator(config.OPENAI_API_KEY, (m) => console.log(JSON.stringify({ t: new Date().toISOString(), msg: m }))),
     captionFont: config.CAPTION_FONT,
   };
   const workerId = config.WORKER_ID ?? `${hostname()}-${process.pid}`;
@@ -241,9 +305,17 @@ async function main() {
   log("worker starting", { workerId, concurrency: config.WORKER_CONCURRENCY, storage: config.STORAGE, providers: summary });
   if (config.STORAGE === "local") log("warning: STORAGE=local, the website can't show these videos. Set STORAGE=supabase.");
 
-  const handle = startWorker(new SupabaseQueue(db), deps, {
-    workerId, concurrency: config.WORKER_CONCURRENCY, pollMs: config.WORKER_POLL_MS, log,
-    info: { providers: summary, mode: config.AYIKO_PROVIDER_MODE },
+  const queue = new SupabaseQueue(db);
+  const notify = config.RESEND_API_KEY
+    ? emailNotifier(queue, async (t) => {
+        await sendWithResend(config.RESEND_API_KEY!, config.EMAIL_FROM, t.to, renderReadyEmail({ ...t, siteUrl: config.SITE_URL }));
+        log("ready email sent", { videos: t.videos.length });
+      })
+    : undefined;
+  if (!notify) log("ready emails off: set RESEND_API_KEY to turn them on");
+  const handle = startWorker(queue, deps, {
+    workerId, concurrency: config.WORKER_CONCURRENCY, pollMs: config.WORKER_POLL_MS, log, notify,
+    info: { providers: summary, mode: config.AYIKO_PROVIDER_MODE, moderation: config.OPENAI_API_KEY ? "openai" : "basic", email: Boolean(notify) },
   });
   const shutdown = async (sig: string) => {
     log("stopping after current jobs finish", { signal: sig });

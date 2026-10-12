@@ -13,6 +13,8 @@ class MemoryBilling implements BillingStore {
   async userForCustomer(c: string) {
     return [...this.rows.entries()].find(([, r]) => r.stripe_customer_id === c)?.[0];
   }
+  payments = new Map<string, number>();
+  async recordPayment(_u: string, ref: string, _p: string, pence: number) { if (!this.payments.has(ref)) this.payments.set(ref, pence); }
   async save(userId: string, row: BillingRow) {
     this.rows.set(userId, { ...this.rows.get(userId), ...row });
   }
@@ -31,6 +33,7 @@ describe("Stripe webhook handling", () => {
     await handleStripeEvent(e, store);
     expect(store.total("u1")).toBe(60);
     expect(store.rows.get("u1")?.stripe_customer_id).toBe("cus_1");
+    expect([...store.payments.values()]).toEqual([500]);
   });
 
   it("waits for delayed payment methods before crediting", async () => {
@@ -46,11 +49,12 @@ describe("Stripe webhook handling", () => {
     const store = new MemoryBilling();
     await handleStripeEvent(ev("checkout.session.completed", { id: "cs_3", mode: "subscription", payment_status: "paid", client_reference_id: "u2", customer: "cus_2", subscription: "sub_1", metadata: { user_id: "u2", plan: "creator" } }), store);
     expect(store.total("u2")).toBe(0); // credits come with the invoice
-    const invoice = (id: string) => ev("invoice.paid", { id, customer: "cus_2", parent: { subscription_details: { subscription: "sub_1", metadata: { user_id: "u2", plan: "creator" } } } });
+    const invoice = (id: string) => ev("invoice.paid", { id, customer: "cus_2", amount_paid: 1500, parent: { subscription_details: { subscription: "sub_1", metadata: { user_id: "u2", plan: "creator" } } } });
     await handleStripeEvent(invoice("in_1"), store);
     await handleStripeEvent(invoice("in_1"), store); // retry
     await handleStripeEvent(invoice("in_2"), store); // next month
     expect(store.total("u2")).toBe(440);
+    expect([...store.payments.values()].reduce((a, b) => a + b, 0)).toBe(3000);
 
     await handleStripeEvent(ev("customer.subscription.updated", { id: "sub_1", status: "active", customer: "cus_2", cancel_at_period_end: true, metadata: { user_id: "u2", plan: "creator" }, items: { data: [{ current_period_end: 1800000000 }] } }), store);
     expect(store.rows.get("u2")).toMatchObject({ plan: "creator", status: "active", cancel_at_period_end: true });

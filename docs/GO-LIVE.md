@@ -20,6 +20,7 @@ Never paste a secret key into chat, email or GitHub. Keys go only into Vercel's 
    - `supabase/migrations/0002_waitlist.sql`
    - `supabase/migrations/0003_app_queue.sql`
    - `supabase/migrations/0004_billing.sql`
+   - `supabase/migrations/0005_editor_email_admin.sql`
 
    Each should say "Success. No rows returned".
 3. **Project Settings → API Keys**. You need three values:
@@ -127,6 +128,21 @@ How credits are added:
 - **Creator and Business:** 220 or 650 credits each month, every time the monthly payment succeeds, the first month included. Unused credits carry over.
 - Paying customers' videos have no watermark.
 - If Stripe sends the same event twice, credits are still added only once.
+
+## 6. Extras: assistant, moderation, emails, admin
+
+All of these are optional and switch on when their key is added.
+
+| Feature | Where the key goes | Key |
+|---|---|---|
+| **Script assistant** ("Write it for me" and translate) | Vercel | `ANTHROPIC_API_KEY` (console.anthropic.com). Add `KHAYA_API_KEY` too for GhanaNLP's Twi, Yoruba, Ewe and Ga translation |
+| **Moderation** of scripts and photos | Server `.env.worker` | `OPENAI_API_KEY` (platform.openai.com). The moderation model is free to use |
+| **"Your video is ready" emails** | Server `.env.worker` | `RESEND_API_KEY` (resend.com) and `EMAIL_FROM`. Resend needs a verified domain, so do this once ayiko.ai is bought |
+| **Admin dashboard** at `/admin` | Vercel | `ADMIN_EMAILS=collinsayidan@gmail.com` (comma-separated). Only those accounts can open it |
+
+After changing `.env.worker`, run `docker compose up -d` in `~/ayiko-engine/deploy`. After changing Vercel variables, redeploy.
+
+The **editing canvas** needs no key: on any finished video, click **Edit**, move the captions or headline, change colours and text, then click **Render new version**. That costs 1 credit, because it reuses the voice and AI clip.
 
 ## If something goes wrong
 

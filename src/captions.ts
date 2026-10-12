@@ -84,6 +84,48 @@ export function assEscape(text: string): string {
 
 export type CaptionStyle = "pop" | "box";
 
+/**
+ * Per-video look, set in the editing canvas. Every field is optional and
+ * falls back to the house style. Positions are fractions of the frame height.
+ */
+export interface Design {
+  /** Where the bottom of the captions sits, 0 (top) to 1 (bottom). Default 0.83 on 9:16. */
+  captionY?: number;
+  /** Where the top of the headline tag sits. Default 0.10. */
+  headlineY?: number;
+  /** Headline tag and call-to-action pill colour, "#RRGGBB". */
+  accent?: string;
+  /** Colour of the word being spoken (pop style), "#RRGGBB". */
+  highlight?: string;
+  /** Caption size, 0.7 to 1.4. */
+  captionScale?: number;
+  /** Captions in capitals. */
+  uppercase?: boolean;
+}
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const clamp = (n: unknown, lo: number, hi: number) => (typeof n === "number" && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : undefined);
+
+/** Keep only safe, in-range design values (they come from the browser). */
+export function cleanDesign(d: unknown): Design {
+  if (!d || typeof d !== "object") return {};
+  const x = d as Record<string, unknown>;
+  const out: Design = {};
+  const cy = clamp(x.captionY, 0.15, 0.95); if (cy !== undefined) out.captionY = cy;
+  const hy = clamp(x.headlineY, 0.03, 0.8); if (hy !== undefined) out.headlineY = hy;
+  const sc = clamp(x.captionScale, 0.7, 1.4); if (sc !== undefined) out.captionScale = sc;
+  if (typeof x.accent === "string" && HEX.test(x.accent)) out.accent = x.accent.toUpperCase();
+  if (typeof x.highlight === "string" && HEX.test(x.highlight)) out.highlight = x.highlight.toUpperCase();
+  if (typeof x.uppercase === "boolean") out.uppercase = x.uppercase;
+  return out;
+}
+
+/** "#RRGGBB" → ASS "&H00BBGGRR". */
+export function assColour(hex: string): string {
+  const h = hex.replace("#", "").toUpperCase();
+  return `&H00${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`;
+}
+
 export interface AssOptions {
   width?: number;
   height?: number;
@@ -99,6 +141,7 @@ export interface AssOptions {
   brand?: string;
   cta?: string;
   watermark?: string;
+  design?: Design;
 }
 
 // Colours are &HAABBGGRR
@@ -148,8 +191,16 @@ export function buildAss(cues: Cue[], opts: AssOptions): string {
   const px = (n: number) => Math.round(n * k);
   const voiceEnd = Math.min(opts.voiceEndS ?? opts.durationS, opts.durationS);
   const style = opts.style ?? "pop";
+  const d = cleanDesign(opts.design);
   const capV = h >= w ? px(330) : px(110);
   const cx = Math.round(w / 2);
+  const capY = d.captionY !== undefined ? Math.round(d.captionY * h) : undefined;
+  const headY = Math.round((d.headlineY ?? 200 / 1920) * h);
+  const accent = d.accent ? assColour(d.accent) : ACCENT;
+  const signal = d.highlight ? assColour(d.highlight) : SIGNAL;
+  const cs = d.captionScale ?? 1;
+  const caseOf = (t: string) => (d.uppercase ? t.toLocaleUpperCase() : t);
+  const capPos = capY !== undefined ? `\\an2\\pos(${cx},${capY})` : "";
 
   const lines = [
     "[Script Info]",
@@ -161,9 +212,9 @@ export function buildAss(cues: Cue[], opts: AssOptions): string {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: Pop,Inter Black,${px(84)},${WHITE},${WHITE},${OUTLINE},${SHADOW},0,0,0,0,100,100,0,0,1,${px(7)},${px(4)},2,${px(80)},${px(80)},${capV},1`,
-    `Style: Box,Inter ExtraBold,${px(74)},${INK},${INK},${WHITE},&H00000000,0,0,0,0,100,100,0,0,3,${px(18)},0,2,${px(90)},${px(90)},${capV},1`,
-    `Style: Title,Inter Black,${px(64)},${WHITE},${WHITE},${ACCENT},&H00000000,0,0,0,0,100,100,${px(3)},0,3,${px(20)},0,8,${px(60)},${px(60)},0,1`,
+    `Style: Pop,Inter Black,${px(84 * cs)},${WHITE},${WHITE},${OUTLINE},${SHADOW},0,0,0,0,100,100,0,0,1,${px(7)},${px(4)},2,${px(80)},${px(80)},${capV},1`,
+    `Style: Box,Inter ExtraBold,${px(74 * cs)},${INK},${INK},${WHITE},&H00000000,0,0,0,0,100,100,0,0,3,${px(18)},0,2,${px(90)},${px(90)},${capV},1`,
+    `Style: Title,Inter Black,${px(64)},${WHITE},${WHITE},${accent},&H00000000,0,0,0,0,100,100,${px(3)},0,3,${px(20)},0,8,${px(60)},${px(60)},0,1`,
     `Style: Brand,Inter Black,${px(100)},${WHITE},${WHITE},${OUTLINE},${SHADOW},0,0,0,0,100,100,0,0,1,0,${px(5)},5,${px(60)},${px(60)},0,1`,
     `Style: Cta,Inter ExtraBold,${px(48)},${WHITE},${WHITE},${OUTLINE},&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1`,
     `Style: Mark,Inter SemiBold,${px(32)},&H33FFFFFF,&H33FFFFFF,&H80000000,&H80000000,0,0,0,0,100,100,1,0,1,${px(2)},0,9,${px(40)},${px(40)},${px(60)},1`,
@@ -177,22 +228,22 @@ export function buildAss(cues: Cue[], opts: AssOptions): string {
   // Captions
   for (const cue of cues) {
     if (style === "box") {
-      ev(0, cue.start, cue.end, "Box", `{\\fad(80,60)}${assEscape(cue.text)}`);
+      ev(0, cue.start, cue.end, "Box", `{${capPos}\\fad(80,60)}${assEscape(caseOf(cue.text))}`);
       continue;
     }
     const words = wordTimings(cue);
     words.forEach((wd, i) => {
       const text = words
-        .map((o, j) => (j === i ? `{\\c${SIGNAL}&\\fscx112\\fscy112}${assEscape(o.word)}{\\r}` : assEscape(o.word)))
+        .map((o, j) => (j === i ? `{\\c${signal}&\\fscx112\\fscy112}${assEscape(caseOf(o.word))}{\\r}` : assEscape(caseOf(o.word))))
         .join(" ");
-      ev(0, wd.start, wd.end, "Pop", (i === 0 ? "{\\fad(90,0)}" : "") + text);
+      ev(0, wd.start, wd.end, "Pop", `{${capPos}${i === 0 ? "\\fad(90,0)" : ""}}` + text);
     });
   }
 
   // Headline tag slides in at the top
   if (opts.headline?.trim()) {
     const end = Math.min(2.6, voiceEnd);
-    ev(2, 0.15, end, "Title", `{\\an8\\move(${cx},${px(150)},${cx},${px(200)},0,300)\\fad(200,250)}${assEscape(opts.headline.trim().toUpperCase())}`);
+    ev(2, 0.15, end, "Title", `{\\an8\\move(${cx},${headY - px(50)},${cx},${headY},0,300)\\fad(200,250)}${assEscape(opts.headline.trim().toUpperCase())}`);
   }
 
   // End card: brand name and a call-to-action pill
@@ -206,7 +257,7 @@ export function buildAss(cues: Cue[], opts: AssOptions): string {
       const pw = px([...cta].length * 29 + 120);
       const ph = px(104);
       const y = Math.round(mid + px(90));
-      ev(3, voiceEnd + 0.15, opts.durationS, "Cta", `{\\an5\\pos(${cx},${y})\\p1\\bord0\\shad0\\1c${ACCENT}&\\fad(250,0)}${roundedRect(pw, ph, ph / 2)}{\\p0}`);
+      ev(3, voiceEnd + 0.15, opts.durationS, "Cta", `{\\an5\\pos(${cx},${y})\\p1\\bord0\\shad0\\1c${accent}&\\fad(250,0)}${roundedRect(pw, ph, ph / 2)}{\\p0}`);
       ev(4, voiceEnd + 0.15, opts.durationS, "Cta", `{\\an5\\pos(${cx},${y})\\fad(250,0)}${cta}`);
     }
   }

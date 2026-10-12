@@ -12,7 +12,7 @@ import { buildProviders } from "../src/providers";
 import type { VideoProvider } from "../src/providers/types";
 import { ProviderError } from "../src/providers/types";
 import { LocalStorage } from "../src/storage";
-import { processJob, requestFromJob, startWorker, userMessage, type Queue, type QueuedJob } from "../src/worker";
+import { emailNotifier, processJob, requestFromJob, startWorker, userMessage, type NotifyTarget, type Queue, type QueuedJob } from "../src/worker";
 
 /** Mirrors the SQL queue functions (tested against Postgres separately). */
 class MemoryQueue implements Queue {
@@ -40,6 +40,7 @@ class MemoryQueue implements Queue {
   async reap() { return 0; }
   announced: string[] = [];
   async announce(_w: string, langs: string[]) { this.announced = langs; }
+  notification?: (batch: string) => Promise<NotifyTarget | undefined>;
 }
 
 /** In production these writes go to the real job row; here they're recorded. */
@@ -139,6 +140,35 @@ describe("render worker", () => {
     expect((video as CountingVideo).calls).toBe(calls);
     expect(userMessage(new Error("secret internals"))).not.toMatch(/secret/);
   }, 120_000);
+
+  it("blocks a flagged photo before paying for the clip, and emails once per finished batch", async () => {
+    const { deps, imageKey, video } = await setup();
+    deps.moderator = { checkScript: async () => ({ ok: true }), checkImage: async () => ({ ok: false, reason: "This photo breaks the Ayiko content rules." }) };
+    const q = new MemoryQueue();
+    q.add({ id: "p", request: req(imageKey) });
+    const j = await q.claim();
+    await processJob(j!, q, deps, { workerId: "w" });
+    expect(q.get("p").error).toMatch(/photo.*refunded/);
+    expect((video as CountingVideo).calls).toBe(0);
+
+    // emails: the notify hook runs after every job; the queue decides when the batch is complete
+    const ok = await setup();
+    const q2 = new MemoryQueue();
+    q2.add({ id: "a", batch_id: "b1", request: req(ok.imageKey) });
+    q2.add({ id: "b", batch_id: "b1", language: "en", depends_on: "a", request: req(ok.imageKey, "Welcome!") });
+    q2.add({ id: "e", batch_id: "b2", request: { ...req(ok.imageKey), editOf: "a" }, clip_key: null });
+    const sent: string[] = [];
+    let claimed = false;
+    q2.notification = async (batch: string) => {
+      const done = q2.jobs.filter((x) => x.batch_id === batch).every((x) => x.status === "succeeded" || x.status === "failed");
+      if (!done || claimed) return undefined;
+      claimed = true;
+      return { to: "ama@example.com", title: "Shea", videos: [] };
+    };
+    const notify = emailNotifier(q2, async (t) => { sent.push(t.to); });
+    for (let i = 0; i < 3; i++) { const x = await q2.claim(); if (x) await processJob(x, q2, ok.deps, { workerId: "w", notify }); }
+    expect(sent).toEqual(["ama@example.com"]);
+  }, 180_000);
 
   it("the loop drains the queue and stops cleanly", async () => {
     const { deps, imageKey } = await setup();

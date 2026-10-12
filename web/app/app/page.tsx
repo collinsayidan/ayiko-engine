@@ -30,6 +30,7 @@ export default async function AppPage({ searchParams }: { searchParams: Promise<
     listVideos(db, user.id), balanceOf(db, user.id), studioStatus(db),
     db.from("billing").select("stripe_customer_id, plan, status, renews_at, cancel_at_period_end").eq("user_id", user.id).maybeSingle().then((r) => r.data),
   ]);
+  const { data: profile } = await db.from("profiles").select("email_updates").eq("id", user.id).maybeSingle();
   const name = (user.user_metadata?.full_name as string | undefined) ?? (user.user_metadata?.name as string | undefined) ?? user.email ?? "";
 
   return (
@@ -45,6 +46,7 @@ export default async function AppPage({ searchParams }: { searchParams: Promise<
         cancelAtPeriodEnd: Boolean(billingRow?.cancel_at_period_end),
         hasCustomer: Boolean(billingRow?.stripe_customer_id),
       }}
+      features={{ assist: Boolean(process.env.ANTHROPIC_API_KEY), emailUpdates: profile?.email_updates !== false }}
     />
   );
 }

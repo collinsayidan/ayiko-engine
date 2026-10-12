@@ -25,6 +25,8 @@ export interface BillingStore {
   grant(userId: string, credits: number, reason: "purchase" | "subscription", ref: string): Promise<void>;
   userForCustomer(customerId: string): Promise<string | undefined>;
   save(userId: string, row: BillingRow): Promise<void>;
+  /** Money received, for the revenue dashboard. Each ref is recorded once. */
+  recordPayment(userId: string, ref: string, plan: string, amountPence: number): Promise<void>;
 }
 
 const idOf = (x: string | { id: string } | null | undefined) => (typeof x === "string" ? x : x?.id);
@@ -48,6 +50,7 @@ export async function handleStripeEvent(event: Stripe.Event, store: BillingStore
       if (s.mode === "payment") {
         if (s.payment_status !== "paid") return "waiting: payment not settled yet";
         await store.grant(userId, plan.credits, "purchase", `cs_${s.id}`);
+        await store.recordPayment(userId, `cs_${s.id}`, plan.id, s.amount_total ?? plan.amountPence);
         return `granted ${plan.credits} (${plan.id})`;
       }
       // Subscription credits arrive with invoice.paid.
@@ -63,6 +66,7 @@ export async function handleStripeEvent(event: Stripe.Event, store: BillingStore
       const userId = await userFrom(store, sub.metadata?.user_id, inv.customer);
       if (!userId || !plan || plan.mode !== "subscription") return "ignored: not an Ayiko subscription";
       await store.grant(userId, plan.credits, "subscription", `in_${inv.id}`);
+      if (inv.amount_paid > 0) await store.recordPayment(userId, `in_${inv.id}`, plan.id, inv.amount_paid);
       return `granted ${plan.credits} (${plan.id} renewal)`;
     }
 

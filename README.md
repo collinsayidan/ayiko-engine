@@ -65,6 +65,9 @@ The waitlist saves to the Supabase `waitlist` table (`supabase/migrations/0002_w
 | `src/templates.ts` | Templates: curated motion prompts, length, format and script starters |
 | `src/credits.ts` | Prices, quotes and the credit ledger rules |
 | `src/pipeline.ts` | The captioned-short pipeline, split into steps that can be retried |
+| `src/moderation.ts` | Script and photo checks (OpenAI omni-moderation, basic rules as fallback) |
+| `src/email.ts` | "Your video is ready" email (Resend) |
+| `src/costs.ts` | Provider cost estimates for the admin dashboard |
 | `src/worker.ts` | The render worker: claims queued jobs from Postgres, makes voice + clip, renders, refunds on failure |
 | `src/supabase.ts` | Postgres-backed ledger and job store |
 | `src/storage.ts` | Local, Supabase Storage or Cloudflare R2 file storage |
@@ -86,7 +89,7 @@ The waitlist saves to the Supabase `waitlist` table (`supabase/migrations/0002_w
 
 ## Next to build
 
-1. Email when a video is ready
-2. Admin dashboard: sign-ups, videos, revenue, provider cost per language
+1. Native-speaker review of voices and AI translations per language
+2. More templates (Link to video, Talking presenter)
 3. A proper moderation API in `src/moderation.ts` (text and images)
 4. Script drafting and English → Twi/Yoruba translation step

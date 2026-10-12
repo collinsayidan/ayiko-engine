@@ -33,6 +33,13 @@ export async function POST(req: Request) {
       const { data } = await db.from("billing").select("user_id").eq("stripe_customer_id", customerId).maybeSingle();
       return (data?.user_id as string | undefined) ?? undefined;
     },
+    async recordPayment(userId, ref, plan, amountPence) {
+      const { error } = await db.from("payments").upsert(
+        { user_id: userId, stripe_ref: ref, plan, amount_pence: amountPence },
+        { onConflict: "stripe_ref", ignoreDuplicates: true },
+      );
+      if (error) throw error;
+    },
     async save(userId, row) {
       const { error } = await db.from("billing").upsert({ user_id: userId, ...row, updated_at: new Date().toISOString() });
       if (error) throw error;

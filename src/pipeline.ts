@@ -1,10 +1,11 @@
+import { estimateVideoCost, estimateVoiceCost } from "./costs";
 import { quoteShort, type Ledger, type Quote } from "./credits";
 import type { JobStore } from "./jobs";
 import { isLanguageCode, type Gender, type LanguageCode } from "./languages";
 import { DEFAULT_FFMPEG, normaliseAudio, type FfmpegPaths } from "./media";
 import type { Moderator } from "./moderation";
 import type { MediaBytes, VideoProvider } from "./providers/types";
-import type { CaptionStyle } from "./captions";
+import type { CaptionStyle, Design } from "./captions";
 import { renderShort, type AspectRatio } from "./render";
 import type { VoiceRouter } from "./router";
 import { keys, type Storage } from "./storage";
@@ -35,6 +36,8 @@ export interface ShortRequest {
   brandName?: string;
   cta?: string;
   captionStyle?: CaptionStyle;
+  /** Look set in the editing canvas: caption position, colours, size */
+  design?: Design;
   /** Regenerate cheaply: keep the clip and change only the voice, or the reverse */
   reuse?: { videoKey?: string; voiceKey?: string };
 }
@@ -113,7 +116,7 @@ export async function stepVoice(jobId: string, req: ShortRequest, deps: EngineDe
       await deps.jobs.addGeneration({
         jobId, step: "voice", provider: a.provider, voiceId: a.voiceId, language: req.language,
         status: a.ok ? "succeeded" : "failed", latencyMs: a.latencyMs, error: a.error,
-        model: a.ok ? result.model : undefined, costUsd: a.ok ? result.costUsd : undefined,
+        model: a.ok ? result.model : undefined, costUsd: a.ok ? result.costUsd ?? estimateVoiceCost(a.provider, req.script) : undefined,
         outputKey: a.ok ? key : undefined,
       });
     }
@@ -139,7 +142,7 @@ export async function stepVideo(jobId: string, req: ShortRequest, deps: EngineDe
     const key = await deps.storage.put(keys.clip(req.userId, jobId), clip);
     await deps.jobs.addGeneration({
       jobId, step: "video", provider: clip.provider, model: clip.model, status: "succeeded",
-      latencyMs: Date.now() - started, costUsd: clip.costUsd, outputKey: key,
+      latencyMs: Date.now() - started, costUsd: clip.costUsd ?? estimateVideoCost(clip.provider, req.videoDurationS ?? 5), outputKey: key,
     });
     return key;
   } catch (err) {
@@ -160,7 +163,7 @@ export async function stepRender(
   const out = await renderShort({
     video, voice, script: req.script, aspect: req.aspect, captionStyle: req.captionStyle,
     headline: req.headline, brand: req.brandName, cta: req.cta,
-    watermark: req.watermark ? "ayiko.ai" : undefined, paths: deps.paths,
+    watermark: req.watermark ? "ayiko.ai" : undefined, design: req.design, paths: deps.paths,
   });
   const outputKey = await deps.storage.put(keys.output(req.userId, jobId), out.video);
   await deps.jobs.addGeneration({ jobId, step: "render", provider: "ffmpeg", status: "succeeded", latencyMs: Date.now() - started, outputKey });

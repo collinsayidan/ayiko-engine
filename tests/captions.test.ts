@@ -78,3 +78,26 @@ describe("helpers", () => {
     expect(roundedRect(200, 100, 50).startsWith("m 50 0")).toBe(true);
   });
 });
+
+describe("editing-canvas design", () => {
+  it("keeps only safe values from the browser", async () => {
+    const { cleanDesign } = await import("../src/captions");
+    expect(cleanDesign({ captionY: 5, headlineY: -1, captionScale: 9, accent: "red", highlight: "#ff00aa", uppercase: "yes", evil: "{\\pos}" }))
+      .toEqual({ captionY: 0.95, headlineY: 0.03, captionScale: 1.4, highlight: "#FF00AA" });
+    expect(cleanDesign(null)).toEqual({});
+  });
+
+  it("positions, colours and capitalises captions as designed", async () => {
+    const { buildAss, assColour } = await import("../src/captions");
+    expect(assColour("#5468FF")).toBe("&H00FF6854");
+    const cues = [{ text: "Akwaaba nnɛ", start: 0, end: 1.5 }];
+    const ass = buildAss(cues, { durationS: 4, voiceEndS: 2, headline: "New in", cta: "Buy", design: { captionY: 0.5, headlineY: 0.2, accent: "#E05A8A", highlight: "#FFD400", uppercase: true, captionScale: 1.2 } });
+    expect(ass).toContain("\\an2\\pos(540,960)");
+    expect(ass).toContain("AKWAABA");
+    expect(ass).toContain("NNƐ");
+    expect(ass).toContain(`\\c${assColour("#FFD400")}&`);
+    expect(ass).toContain(`\\1c${assColour("#E05A8A")}&`);
+    expect(ass).toContain(`\\move(540,${Math.round(0.2 * 1920) - 50},540,${Math.round(0.2 * 1920)}`);
+    expect(ass).toMatch(/Style: Pop,Inter Black,101,/);
+  });
+});

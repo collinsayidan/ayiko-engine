@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildAss, splitPhrases, timeCues, type CaptionStyle, type Cue } from "./captions";
+import { buildAss, splitPhrases, timeCues, type CaptionStyle, type Cue, type Design } from "./captions";
 import { DEFAULT_FFMPEG, probeDuration, run, withTempDir, type FfmpegPaths } from "./media";
 import type { MediaBytes } from "./providers/types";
 
@@ -26,6 +26,7 @@ export interface RenderInput {
   brand?: string;
   cta?: string;
   watermark?: string;
+  design?: Design;
   paths?: FfmpegPaths;
 }
 
@@ -64,7 +65,7 @@ export async function renderShort(input: RenderInput): Promise<RenderOutput> {
     const cues = timeCues(splitPhrases(input.script, input.aspect === "16:9" ? 34 : 20), voiceS);
     const ass = buildAss(cues, {
       width: w, height: h, durationS, voiceEndS: voiceEnd, style: input.captionStyle,
-      headline: input.headline, brand: input.brand, cta: input.cta, watermark: input.watermark,
+      headline: input.headline, brand: input.brand, cta: input.cta, watermark: input.watermark, design: input.design,
     });
     await writeFile(join(dir, "captions.ass"), ass, "utf8");
 

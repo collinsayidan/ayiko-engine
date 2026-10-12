@@ -31,6 +31,14 @@ const Env = z.object({
   SUPABASE_SECRET_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
 
+  /** OpenAI key for the free moderation model (scripts and photos). Optional. */
+  OPENAI_API_KEY: z.string().optional(),
+
+  /** Resend key and sender for "your video is ready" emails. Optional. */
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default("Ayiko <hello@ayiko.ai>"),
+  SITE_URL: z.string().default("https://ayiko.ai"),
+
   WORKER_ID: z.string().optional(),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
   WORKER_POLL_MS: z.coerce.number().int().min(500).default(3000),

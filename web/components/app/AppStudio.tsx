@@ -34,11 +34,12 @@ const timeAgo = (iso: string) => {
   return new Date(iso).toLocaleDateString();
 };
 
-export function AppStudio({ initial, user, start, billing }: {
+export function AppStudio({ initial, user, start, billing, features = { assist: false, emailUpdates: true } }: {
   initial: Data;
   user: { name: string; email: string; avatar: string | null; plan: string | null };
   start: { template?: string; lang?: string; plan?: string; checkout?: string };
   billing: { enabled: boolean; plan: string; status: string; renewsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
+  features?: { assist: boolean; emailUpdates: boolean };
 }) {
   const [data, setData] = useState<Data>(initial);
   const available = data.status.languages;
@@ -88,6 +89,64 @@ export function AppStudio({ initial, user, start, billing }: {
   const [payError, setPayError] = useState("");
   const plansRef = useRef<HTMLDialogElement>(null);
 
+  // Script assistant
+  const [showAssist, setShowAssist] = useState(false);
+  const [brief, setBrief] = useState("");
+  const [draft, setDraft] = useState("");
+  const [assisting, setAssisting] = useState<"" | "draft" | "translate">("");
+  const [assistError, setAssistError] = useState("");
+  const [aiLangs, setAiLangs] = useState<string[]>([]);
+  const [emailUpdates, setEmailUpdates] = useState(features.emailUpdates);
+
+  async function assist(body: Record<string, unknown>) {
+    const res = await fetch("/api/assist", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error ?? "The script assistant is busy. Try again.");
+    return out;
+  }
+
+  async function translateInto(source: string, targets: string[]) {
+    if (!source.trim() || !targets.length) return;
+    setAssisting("translate");
+    try {
+      const { translations } = await assist({ mode: "translate", text: source, to: targets });
+      setScripts((cur) => {
+        const next = { ...cur };
+        for (const t of translations as { code: string; text: string }[]) next[t.code] = t.text;
+        return next;
+      });
+      setAiLangs((cur) => [...new Set([...cur, ...targets])]);
+    } catch (err) {
+      setAssistError(err instanceof Error ? err.message : "Translation failed.");
+    } finally {
+      setAssisting("");
+    }
+  }
+
+  async function writeForMe() {
+    setAssistError("");
+    setAssisting("draft");
+    try {
+      const { script } = await assist({ mode: "draft", brief, template: tplId, brand, cta });
+      setDraft(script);
+      if (langs.includes("en")) setScripts((cur) => ({ ...cur, en: script }));
+      setAssisting("");
+      await translateInto(script, langs.filter((c) => c !== "en"));
+    } catch (err) {
+      setAssistError(err instanceof Error ? err.message : "The script assistant is busy.");
+      setAssisting("");
+    }
+  }
+
+  const englishSource = (scripts.en ?? "").trim() || draft;
+
+  async function toggleEmails() {
+    const next = !emailUpdates;
+    setEmailUpdates(next);
+    const res = await fetch("/api/preferences", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ emailUpdates: next }) }).catch(() => null);
+    if (!res?.ok) setEmailUpdates(!next);
+  }
+
   useEffect(() => {
     const d = plansRef.current;
     if (!d) return;
@@ -116,6 +175,15 @@ export function AppStudio({ initial, user, start, billing }: {
     if (res.ok && body.url) window.location.href = body.url;
     else setToast(body.error ?? "We couldn't open billing. Try again.");
   }
+
+  // Back from the editing canvas
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("edited")) return;
+    url.searchParams.delete("edited");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    setToast("New version started · 1 credit. It's ready in about a minute.");
+  }, []);
 
   // Back from Stripe: credits arrive by webhook a few seconds later, so check a few times.
   useEffect(() => {
@@ -250,6 +318,10 @@ export function AppStudio({ initial, user, start, billing }: {
             <div className="menu-pop">
               <p><b>{user.name || "Your account"}</b><br /><small>{user.email}</small></p>
               {plan && subscribed && <p className="small muted">{plan.name} plan{billing.renewsAt ? ` · ${billing.cancelAtPeriodEnd ? "ends" : "renews"} ${new Date(billing.renewsAt).toLocaleDateString()}` : ""}</p>}
+              <label className="menu-switch">
+                <input type="checkbox" checked={emailUpdates} onChange={() => void toggleEmails()} />
+                <span>Email me when videos are ready</span>
+              </label>
               {billing.enabled && billing.hasCustomer && <button type="button" onClick={() => void manageBilling()}>Manage billing</button>}
               <form action="/auth/signout" method="post"><button type="submit">Log out</button></form>
             </div>
@@ -339,6 +411,30 @@ export function AppStudio({ initial, user, start, billing }: {
           <fieldset>
             <legend><span className="n">4</span>What should the voice say?</legend>
             {!langs.length && <p className="muted small">Pick a language above, then write the script in that language.</p>}
+            {features.assist && langs.length > 0 && (
+              <div className={`assist${showAssist ? " open" : ""}`}>
+                {!showAssist ? (
+                  <button type="button" className="assist-open" onClick={() => setShowAssist(true)}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
+                    Write it for me{langs.some((c) => c !== "en") ? " and translate" : ""}
+                  </button>
+                ) : (
+                  <>
+                    <label htmlFor="brief">What are you promoting?</label>
+                    <textarea id="brief" rows={2} maxLength={600} value={brief} onChange={(e) => setBrief(e.target.value)}
+                      placeholder="Shea butter, 50 cedis a jar, delivery in Accra, order on WhatsApp" />
+                    <div className="assist-row">
+                      <button type="button" className="btn small-btn" disabled={assisting !== "" || brief.trim().length < 8} onClick={() => void writeForMe()}>
+                        {assisting === "draft" ? "Writing…" : assisting === "translate" ? "Translating…" : draft ? "Write again" : "Write script"}
+                      </button>
+                      <button type="button" className="linkish" onClick={() => setShowAssist(false)}>Close</button>
+                    </div>
+                    {draft && !langs.includes("en") && <p className="draft"><small>English draft</small>{draft}</p>}
+                    <p className="err" role="alert">{assistError}</p>
+                  </>
+                )}
+              </div>
+            )}
             {langs.map((code, i) => {
               const l = languageByCode(code)!;
               const v = scripts[code] ?? "";
@@ -352,6 +448,16 @@ export function AppStudio({ initial, user, start, billing }: {
                   </label>
                   <textarea id={id} rows={3} lang={code === "twi" ? "tw" : code} placeholder={i === 0 && code === "en" ? tpl.scriptStarter : l.example}
                     value={v} onChange={(e) => { setScripts((s) => ({ ...s, [code]: e.target.value })); if (badField === id) setBadField(""); }} />
+                  {code !== "en" && features.assist && (
+                    <div className="script-tools">
+                      {aiLangs.includes(code) && <span className="ai-note">AI translation: ask a native speaker to check it before posting.</span>}
+                      {englishSource && (
+                        <button type="button" className="linkish" disabled={assisting !== ""} onClick={() => void translateInto(englishSource, [code])}>
+                          {assisting === "translate" ? "Translating…" : aiLangs.includes(code) ? "Translate again" : "Translate from English"}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -446,10 +552,16 @@ export function AppStudio({ initial, user, start, billing }: {
                     {v.status === "failed" ? (
                       <p className="small err">{v.error ?? "This video couldn't be made. Your credits were refunded."}</p>
                     ) : v.status === "succeeded" && v.downloadUrl ? (
-                      <a className="btn ghost small-btn" href={v.downloadUrl}>
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>
-                        Download
-                      </a>
+                      <div className="vactions">
+                        <a className="btn ghost small-btn" href={v.downloadUrl} aria-label={`Download ${v.title} in ${languageByCode(v.language)?.name ?? v.language}`}>
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>
+                          Download
+                        </a>
+                        <a className="btn ghost small-btn" href={`/app/edit/${v.id}`} aria-label={`Edit ${v.title}`}>
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" /></svg>
+                          Edit
+                        </a>
+                      </div>
                     ) : (
                       <p className="small muted">{v.credits} credits · refunded automatically if it fails</p>
                     )}
