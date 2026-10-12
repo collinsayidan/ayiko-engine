@@ -4,12 +4,13 @@ import { AppStudio } from "@/components/app/AppStudio";
 import { serverConfigured } from "@/lib/env";
 import { currentUser, supabaseAdmin } from "@/lib/supabase";
 import { balanceOf, listVideos, studioStatus } from "@/lib/studio";
+import { billingEnabled } from "@/lib/stripe";
 import "../studio.css";
 
 export const metadata: Metadata = { title: "Studio · Ayiko.ai", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
-export default async function AppPage({ searchParams }: { searchParams: Promise<{ template?: string; lang?: string; plan?: string }> }) {
+export default async function AppPage({ searchParams }: { searchParams: Promise<{ template?: string; lang?: string; plan?: string; checkout?: string }> }) {
   const db = supabaseAdmin();
   if (!serverConfigured() || !db) {
     return (
@@ -25,14 +26,25 @@ export default async function AppPage({ searchParams }: { searchParams: Promise<
   if (!user) redirect("/login?next=/app");
 
   const sp = await searchParams;
-  const [videos, balance, status] = await Promise.all([listVideos(db, user.id), balanceOf(db, user.id), studioStatus(db)]);
+  const [videos, balance, status, billingRow] = await Promise.all([
+    listVideos(db, user.id), balanceOf(db, user.id), studioStatus(db),
+    db.from("billing").select("stripe_customer_id, plan, status, renews_at, cancel_at_period_end").eq("user_id", user.id).maybeSingle().then((r) => r.data),
+  ]);
   const name = (user.user_metadata?.full_name as string | undefined) ?? (user.user_metadata?.name as string | undefined) ?? user.email ?? "";
 
   return (
     <AppStudio
       initial={{ videos, balance, status }}
       user={{ name, email: user.email ?? "", avatar: (user.user_metadata?.avatar_url as string | undefined) ?? null, plan: (user.user_metadata?.selected_plan as string | undefined) ?? null }}
-      start={{ template: sp.template, lang: sp.lang, plan: sp.plan }}
+      start={{ template: sp.template, lang: sp.lang, plan: sp.plan, checkout: sp.checkout }}
+      billing={{
+        enabled: billingEnabled(),
+        plan: (billingRow?.plan as string | undefined) ?? "free",
+        status: (billingRow?.status as string | undefined) ?? "none",
+        renewsAt: (billingRow?.renews_at as string | null | undefined) ?? null,
+        cancelAtPeriodEnd: Boolean(billingRow?.cancel_at_period_end),
+        hasCustomer: Boolean(billingRow?.stripe_customer_id),
+      }}
     />
   );
 }

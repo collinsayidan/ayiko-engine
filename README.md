@@ -86,7 +86,7 @@ The waitlist saves to the Supabase `waitlist` table (`supabase/migrations/0002_w
 
 ## Next to build
 
-1. Stripe checkout and webhook → `grant_credits` (buy credits)
-2. Email when a video is ready
+1. Email when a video is ready
+2. Admin dashboard: sign-ups, videos, revenue, provider cost per language
 3. A proper moderation API in `src/moderation.ts` (text and images)
 4. Script drafting and English → Twi/Yoruba translation step

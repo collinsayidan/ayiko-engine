@@ -6,7 +6,7 @@ import { APP_LANGUAGES, APP_TEMPLATES, LIMITS, languageByCode, templateById, typ
 import { quoteGeneration } from "@/lib/pricing";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import type { StudioStatus, VideoItem } from "@/lib/studio";
-import { planById } from "@/lib/content";
+import { PLANS, planById } from "@/lib/content";
 
 interface Data { videos: VideoItem[]; balance: number; status: StudioStatus }
 interface Photo { key?: string; preview: string; name: string; uploading: boolean; error?: string }
@@ -34,10 +34,11 @@ const timeAgo = (iso: string) => {
   return new Date(iso).toLocaleDateString();
 };
 
-export function AppStudio({ initial, user, start }: {
+export function AppStudio({ initial, user, start, billing }: {
   initial: Data;
   user: { name: string; email: string; avatar: string | null; plan: string | null };
-  start: { template?: string; lang?: string; plan?: string };
+  start: { template?: string; lang?: string; plan?: string; checkout?: string };
+  billing: { enabled: boolean; plan: string; status: string; renewsAt: string | null; cancelAtPeriodEnd: boolean; hasCustomer: boolean };
 }) {
   const [data, setData] = useState<Data>(initial);
   const available = data.status.languages;
@@ -75,10 +76,60 @@ export function AppStudio({ initial, user, start }: {
     if (picked.id === "free") return;
     setPlanId(picked.id);
     setPlanNote(picked.id);
-    void supabaseBrowser().auth.updateUser({ data: { selected_plan: picked.id, selected_plan_at: new Date().toISOString() } });
+    try {
+      void supabaseBrowser().auth.updateUser({ data: { selected_plan: picked.id, selected_plan_at: new Date().toISOString() } }).catch(() => {});
+    } catch { /* saving the choice is a nice-to-have */ }
   }, [start.plan]);
-  const plan = planById(planId);
+  const subscribed = ["active", "trialing", "past_due"].includes(billing.status);
+  const plan = planById(subscribed ? billing.plan : planId);
   const noted = planById(planNote);
+  const [showPlans, setShowPlans] = useState(false);
+  const [paying, setPaying] = useState<string | null>(null);
+  const [payError, setPayError] = useState("");
+  const plansRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const d = plansRef.current;
+    if (!d) return;
+    if (showPlans && !d.open) d.showModal();
+    if (!showPlans && d.open) d.close();
+  }, [showPlans]);
+
+  async function checkout(planId: string) {
+    setPaying(planId);
+    setPayError("");
+    try {
+      const res = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan: planId }) });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body.url) { window.location.href = body.url; return; }
+      if (body.manage) { await manageBilling(); return; }
+      setPayError(body.error ?? "We couldn't open the payment page. Try again.");
+    } catch {
+      setPayError("Check your connection and try again.");
+    }
+    setPaying(null);
+  }
+
+  async function manageBilling() {
+    const res = await fetch("/api/billing-portal", { method: "POST" });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.url) window.location.href = body.url;
+    else setToast(body.error ?? "We couldn't open billing. Try again.");
+  }
+
+  // Back from Stripe: credits arrive by webhook a few seconds later, so check a few times.
+  useEffect(() => {
+    if (!start.checkout) return;
+    const url = new URL(window.location.href);
+    ["checkout", "plan_paid"].forEach((k) => url.searchParams.delete(k));
+    window.history.replaceState(null, "", url.pathname + url.search);
+    if (start.checkout !== "success") return;
+    setPlanNote(null);
+    setToast("Payment received, thank you! Your credits will appear in a few seconds.");
+    const timers = [2000, 5000, 9000, 15000].map((ms) => setTimeout(() => void refresh(), ms));
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start.checkout]);
   const videosRef = useRef<HTMLElement>(null);
 
   const refresh = useCallback(async () => {
@@ -192,11 +243,14 @@ export function AppStudio({ initial, user, start }: {
           <span className={`studio-dot${data.status.online ? " on" : ""}`} title={data.status.online ? "Studio online" : "Studio offline"}>
             <i />{data.status.online ? "Studio online" : "Studio offline"}
           </span>
-          <span className="credits" aria-label={`${data.balance} credits${plan ? `, ${plan.name} plan selected` : ""}`}><b>{data.balance}</b> credits{plan && plan.id !== "free" && <em className="plan-tag">{plan.name}</em>}</span>
+          {billing.enabled && <button type="button" className="btn buy" onClick={() => setShowPlans(true)}>Buy credits</button>}
+          <span className="credits" aria-label={`${data.balance} credits${plan && subscribed ? `, ${plan.name} plan` : ""}`}><b>{data.balance}</b> credits{plan && subscribed && <em className="plan-tag">{plan.name}</em>}</span>
           <details className="menu">
             <summary aria-label="Account menu">{user.avatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" /> : <span>{initials || "A"}</span>}</summary>
             <div className="menu-pop">
               <p><b>{user.name || "Your account"}</b><br /><small>{user.email}</small></p>
+              {plan && subscribed && <p className="small muted">{plan.name} plan{billing.renewsAt ? ` · ${billing.cancelAtPeriodEnd ? "ends" : "renews"} ${new Date(billing.renewsAt).toLocaleDateString()}` : ""}</p>}
+              {billing.enabled && billing.hasCustomer && <button type="button" onClick={() => void manageBilling()}>Manage billing</button>}
               <form action="/auth/signout" method="post"><button type="submit">Log out</button></form>
             </div>
           </details>
@@ -207,9 +261,14 @@ export function AppStudio({ initial, user, start }: {
         <div className="banner plan-banner" role="status">
           <div>
             <b>You chose {noted.name}: {noted.price} {noted.period}, {noted.credits}.</b>
-            <span> Card payment opens very soon. We&apos;ve saved your choice and will let you know the moment you can upgrade. Until then, make videos with your free credits.</span>
+            {billing.enabled
+              ? <span> Pay securely with Stripe and the credits are added straight away.</span>
+              : <span> Card payment opens very soon. We&apos;ve saved your choice and will let you know the moment you can upgrade. Until then, make videos with your free credits.</span>}
           </div>
-          <button type="button" className="linkish" onClick={() => setPlanNote(null)}>OK</button>
+          <div className="banner-actions">
+            {billing.enabled && <button type="button" className="btn" disabled={paying !== null} onClick={() => void checkout(noted.id)}>{paying === noted.id ? "Opening…" : `Continue to payment`}</button>}
+            <button type="button" className="linkish" onClick={() => setPlanNote(null)}>{billing.enabled ? "Not now" : "OK"}</button>
+          </div>
         </div>
       )}
       {!available.length && (
@@ -342,7 +401,9 @@ export function AppStudio({ initial, user, start }: {
             <button className="btn wide" type="submit" disabled={Boolean(blocker) || submitting || !available.length}>
               {submitting ? "Starting…" : blocker || `Generate ${langs.length > 1 ? `${langs.length} videos` : "video"}`}
             </button>
-            {short && <p className="muted small">Buying credits opens soon. Free trial credits can&apos;t be topped up yet.</p>}
+            {short && (billing.enabled
+              ? <button type="button" className="linkish" onClick={() => setShowPlans(true)}>Buy more credits</button>
+              : <p className="muted small">Buying credits opens soon.</p>)}
             <p className="err" role="alert">{formError}</p>
           </div>
         </form>
@@ -399,6 +460,33 @@ export function AppStudio({ initial, user, start }: {
           )}
         </section>
       </div>
+
+      <dialog ref={plansRef} className="plans-dialog" onClose={() => setShowPlans(false)} aria-labelledby="plans-h">
+        <div className="pd-head">
+          <h2 id="plans-h">Buy credits</h2>
+          <button type="button" className="pd-close" aria-label="Close" onClick={() => setShowPlans(false)}>×</button>
+        </div>
+        <p className="muted small">A full video is about 13 credits; each extra language about 3. Payments are handled securely by Stripe.</p>
+        <div className="pd-grid">
+          {PLANS.filter((p) => p.id !== "free").map((p) => {
+            const current = subscribed && billing.plan === p.id;
+            return (
+              <div key={p.id} className={`pd-plan${p.popular ? " pop" : ""}`}>
+                {p.popular && <span className="badge">Most popular</span>}
+                <b>{p.name}</b>
+                <div className="price">{p.price} {p.period && <small>{p.period}</small>}</div>
+                <p className="plan-credits">{p.credits}</p>
+                <ul>{p.perks.map((k) => <li key={k}>{k}</li>)}</ul>
+                {current
+                  ? <button type="button" className="btn ghost" onClick={() => void manageBilling()}>Your plan · manage</button>
+                  : <button type="button" className={`btn${p.popular ? "" : " ghost"}`} disabled={paying !== null} onClick={() => void checkout(p.id)}>{paying === p.id ? "Opening…" : `Pay ${p.price}${p.period.includes("month") ? " a month" : ""}`}</button>}
+              </div>
+            );
+          })}
+        </div>
+        <p className="err" role="alert">{payError}</p>
+        <p className="fineprint">Monthly plans renew automatically and can be cancelled any time under Manage billing. Unused credits stay in your account.</p>
+      </dialog>
 
       <div className={`toast${toast ? " show" : ""}`} role="status" aria-live="polite">{toast}</div>
     </div>

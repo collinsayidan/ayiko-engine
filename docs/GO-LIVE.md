@@ -19,6 +19,7 @@ Never paste a secret key into chat, email or GitHub. Keys go only into Vercel's 
    - `supabase/migrations/0001_init.sql`
    - `supabase/migrations/0002_waitlist.sql`
    - `supabase/migrations/0003_app_queue.sql`
+   - `supabase/migrations/0004_billing.sql`
 
    Each should say "Success. No rows returned".
 3. **Project Settings → API Keys**. You need three values:
@@ -106,6 +107,27 @@ You should see `worker starting`, followed by the providers that are live. Press
 ssh ayiko@SERVER_IP "~/ayiko-engine/deploy/update.sh"
 ```
 
+## 5. Card payments with Stripe (about 15 minutes)
+
+You need nothing set up by hand in Stripe's product catalogue: the first purchase of each plan creates its product and price automatically.
+
+1. Create an account at **stripe.com**. Stay in **Test mode** (the toggle at the top) until everything works.
+2. Go to **Developers → API keys** and copy the **Secret key** (`sk_test_…`).
+3. Go to **Developers → Webhooks → Add endpoint**:
+   - **Endpoint URL:** `https://ayiko-engine.vercel.app/api/stripe/webhook`
+   - **Events:** `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `invoice.paid`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
+   - Save it, then copy the **Signing secret** (`whsec_…`).
+4. In **Vercel → Settings → Environment Variables**, add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, then redeploy.
+5. Go to **Settings → Billing → Customer portal** in Stripe and click **Activate**. This turns on the "Manage billing" page, where customers update their card or cancel.
+6. **Test it:** in the studio, click **Buy credits → Pay £5**. Pay with test card `4242 4242 4242 4242`, any future date and any CVC. Within a few seconds the balance goes up by 60.
+7. **Going live:** switch Stripe to **Live mode**, repeat steps 2 and 3 with the live keys, update both values in Vercel and redeploy. Stripe will ask for your business and bank details before paying out.
+
+How credits are added:
+- **Starter pack:** 60 credits once, when the payment succeeds.
+- **Creator and Business:** 220 or 650 credits each month, every time the monthly payment succeeds, the first month included. Unused credits carry over.
+- Paying customers' videos have no watermark.
+- If Stripe sends the same event twice, credits are still added only once.
+
 ## If something goes wrong
 
 | What you see | What to check |
@@ -115,3 +137,4 @@ ssh ayiko@SERVER_IP "~/ayiko-engine/deploy/update.sh"
 | "Studio offline" | Run `docker compose ps` and `docker compose logs --tail 100` on the server |
 | A video failed | The card shows the reason, and the credits are refunded automatically. The worker logs show the details |
 | A language is greyed out | That language's API key isn't in `.env.worker` |
+| Paid but no credits | Stripe → Developers → Webhooks → your endpoint → look for failed deliveries. Usually the signing secret in Vercel is wrong |

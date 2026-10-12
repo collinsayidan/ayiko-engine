@@ -272,7 +272,7 @@ section + section { border-top: 1px solid var(--line); }
 h2 { font-size: var(--fs-h2); font-weight: 750; line-height: 1.04; letter-spacing: -.035em; max-width: 20ch; }
 h2 em { font-style: normal; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .sub { color: var(--muted); max-width: 40em; margin-top: 18px; font-size: var(--fs-lede); line-height: 1.6; }
-.head-row { display: flex; justify-content: space-between; align-items: end; gap: 24px 48px; flex-wrap: wrap; }
+.head-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px 48px; flex-wrap: wrap; }
 .head-row .sub { max-width: 30em; }
 
 /* ---------- templates ---------- */
@@ -392,8 +392,8 @@ td code { font-family: var(--font-mono); font-size: 12.5px; color: var(--signal)
 .price { font-family: var(--font-display); font-size: 2.6rem; font-weight: 800; line-height: 1.05; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .price small { font-family: var(--font-body); font-size: .875rem; color: var(--muted); font-weight: 500; letter-spacing: 0; }
 .plan ul { margin: 6px 0 0; padding: 16px 0 0; border-top: 1px solid var(--line); list-style: none; display: grid; gap: 10px; color: var(--ink-2); font-size: .9rem; }
-.plan li { display: flex; gap: 10px; align-items: flex-start; }
-.plan li::before {
+.plan li, .pd-plan li { display: flex; gap: 10px; align-items: flex-start; }
+.plan li::before, .pd-plan li::before {
   content: ""; flex: none; width: 16px; height: 16px; margin-top: 3px; background: var(--signal);
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
           mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
