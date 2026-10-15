@@ -42,6 +42,8 @@ const Env = z.object({
   WORKER_ID: z.string().optional(),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
   WORKER_POLL_MS: z.coerce.number().int().min(500).default(3000),
+  /** A job still unfinished after this long fails and is refunded, so a hung provider call can't hold it forever. */
+  WORKER_JOB_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(900_000),
 
   CAPTION_FONT: z.string().default("Inter"),
   FFMPEG_PATH: z.string().default("ffmpeg"),

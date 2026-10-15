@@ -21,12 +21,14 @@ export class FalVideoProvider implements VideoProvider {
 
       const result = await this.client.subscribe(this.model, {
         input: { image_url: imageUrl, prompt: req.prompt, duration: String(req.durationS) },
+        abortSignal: req.signal,
       });
       const data = result.data as { video?: { url?: string } };
       const url = data.video?.url;
       if (!url) throw new ProviderError(this.id, `no video url in response from ${this.model}`);
 
-      const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+      const timeout = AbortSignal.timeout(120_000);
+      const res = await fetch(url, { signal: req.signal ? AbortSignal.any([req.signal, timeout]) : timeout });
       if (!res.ok) throw new ProviderError(this.id, `download failed: HTTP ${res.status}`, res.status);
       return {
         bytes: new Uint8Array(await res.arrayBuffer()),
