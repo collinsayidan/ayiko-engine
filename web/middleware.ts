@@ -1,5 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { authLanding } from "@/lib/auth-landing";
+
+/** Pages that need the Supabase session; every other path only gets the sign-in link check. */
+const SESSION_PATHS = /^\/(?:$|app(?:\/|$)|admin$|login$|auth\/|api\/)/;
 
 /** Keeps the Supabase session fresh and sends signed-out visitors from /app to /login. */
 export async function middleware(request: NextRequest) {
@@ -7,15 +11,10 @@ export async function middleware(request: NextRequest) {
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return NextResponse.next();
 
-  // Sign-in links sometimes land on the wrong page (e.g. the Site URL "/")
-  // with their one-time code attached. Send them to the right handler.
-  const { pathname, searchParams } = request.nextUrl;
-  if (!pathname.startsWith("/auth/") && (searchParams.has("code") || searchParams.has("token_hash"))) {
-    const to = request.nextUrl.clone();
-    to.pathname = searchParams.has("token_hash") ? "/auth/confirm" : "/auth/callback";
-    if (!to.searchParams.has("next")) to.searchParams.set("next", "/app");
-    return NextResponse.redirect(to);
-  }
+  // Sign-in links that land on the wrong page go to the right handler.
+  const landing = authLanding(request.nextUrl.pathname, request.nextUrl.searchParams);
+  if (landing) return NextResponse.redirect(new URL(landing, request.url));
+  if (!SESSION_PATHS.test(request.nextUrl.pathname)) return NextResponse.next();
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(url, key, {
@@ -40,5 +39,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/app/:path*", "/admin", "/login", "/auth/:path*", "/api/:path*"],
+  // Every page, so a sign-in link that lands anywhere is caught; not static files.
+  matcher: ["/((?!_next/static|_next/image|fonts/|showcase/|icon.svg|robots.txt|sitemap.xml).*)"],
 };
