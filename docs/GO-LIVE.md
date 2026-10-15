@@ -21,6 +21,7 @@ Never paste a secret key into chat, email or GitHub. Keys go only into Vercel's 
    - `supabase/migrations/0003_app_queue.sql`
    - `supabase/migrations/0004_billing.sql`
    - `supabase/migrations/0005_editor_email_admin.sql`
+   - `supabase/migrations/0006_worker_ownership.sql`
 
    Each should say "Success. No rows returned".
 3. **Project Settings → API Keys**. You need three values:

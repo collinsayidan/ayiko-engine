@@ -35,6 +35,8 @@ export interface ImageToVideoRequest {
   image: MediaBytes;
   prompt: string;
   durationS: 5 | 10;
+  /** Aborted when the job runs out of time; providers should stop waiting. */
+  signal?: AbortSignal;
 }
 
 export interface VideoResult extends MediaBytes {
