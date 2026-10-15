@@ -34,6 +34,7 @@ export async function isPaying(db: SupabaseClient, userId: string): Promise<bool
 export interface VideoItem {
   id: string;
   batchId: string | null;
+  projectId: string | null;
   language: string;
   status: "queued" | "running" | "succeeded" | "failed";
   step: string | null;
@@ -46,13 +47,15 @@ export interface VideoItem {
   photoUrl: string | null;
   videoUrl: string | null;
   downloadUrl: string | null;
+  /** What it was made from, so "Duplicate" can start a new video with the same settings. */
+  source: { imageKey: string | null; script: string; headline: string; brandName: string; cta: string; gender: string; durationS: number };
 }
 
 /** The user's recent videos with short-lived signed URLs (the bucket is private). */
 export async function listVideos(db: SupabaseClient, userId: string, limit = 40): Promise<VideoItem[]> {
   const { data, error } = await db
     .from("jobs")
-    .select("id, batch_id, language, status, current_step, error, credits_charged, created_at, output_key, depends_on, request, projects(title, template)")
+    .select("id, batch_id, project_id, language, status, current_step, error, credits_charged, created_at, output_key, depends_on, request, projects(title, template)")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -72,11 +75,12 @@ export async function listVideos(db: SupabaseClient, userId: string, limit = 40)
 
   return rows.map((r) => {
     const project = (Array.isArray(r.projects) ? r.projects[0] : r.projects) as { title?: string; template?: string } | null;
-    const req = (r.request ?? {}) as { imageKey?: string };
+    const req = (r.request ?? {}) as { imageKey?: string; script?: string; headline?: string; brandName?: string; cta?: string; gender?: string; videoDurationS?: number };
     const out = r.output_key as string | null;
     return {
       id: r.id as string,
       batchId: (r.batch_id as string | null) ?? null,
+      projectId: (r.project_id as string | null) ?? null,
       language: r.language as string,
       status: r.status as VideoItem["status"],
       step: (r.current_step as string | null) ?? null,
@@ -89,6 +93,33 @@ export async function listVideos(db: SupabaseClient, userId: string, limit = 40)
       photoUrl: req.imageKey ? pics.get(req.imageKey) ?? null : null,
       videoUrl: out ? play.get(out) ?? null : null,
       downloadUrl: out ? dl.get(out) ?? null : null,
+      source: {
+        imageKey: req.imageKey ?? null, script: req.script ?? "", headline: req.headline ?? "", brandName: req.brandName ?? "",
+        cta: req.cta ?? "", gender: req.gender ?? "female", durationS: req.videoDurationS === 10 ? 10 : 5,
+      },
     };
   });
+}
+
+export interface LedgerRow { id: number; delta: number; reason: string; createdAt: string; title: string | null; language: string | null }
+
+/** The user's recent credit movements, newest first, with the video each one was for. */
+export async function creditHistory(db: SupabaseClient, userId: string, limit = 60): Promise<LedgerRow[]> {
+  const { data } = await db
+    .from("credit_ledger")
+    .select("id, delta, reason, created_at, jobs(language, projects(title))")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []).map((r) => {
+    const job = (Array.isArray(r.jobs) ? r.jobs[0] : r.jobs) as { language?: string; projects?: { title?: string } | { title?: string }[] } | null;
+    const project = job ? (Array.isArray(job.projects) ? job.projects[0] : job.projects) : null;
+    return { id: r.id as number, delta: r.delta as number, reason: r.reason as string, createdAt: r.created_at as string, title: project?.title ?? null, language: job?.language ?? null };
+  });
+}
+
+/** Credits spent on videos since a date (net of refunds). */
+export async function spentSince(db: SupabaseClient, userId: string, since: string): Promise<number> {
+  const { data } = await db.from("credit_ledger").select("delta").eq("user_id", userId).in("reason", ["generation", "refund"]).gte("created_at", since);
+  return -(data ?? []).reduce((a, r) => a + (r.delta as number), 0);
 }

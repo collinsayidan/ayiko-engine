@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { fail, requireUser } from "@/lib/api";
 import { env } from "@/lib/env";
 import { LIMITS, languageByCode, templateById, type Gender } from "@/lib/catalog";
+import { cleanDesign } from "@/lib/design";
 import { quoteGeneration } from "@/lib/pricing";
 import { balanceOf, isPaying, studioStatus } from "@/lib/studio";
 
@@ -17,6 +18,8 @@ interface Body {
   headline?: string;
   brandName?: string;
   cta?: string;
+  captionStyle?: string;
+  design?: unknown;
   languages?: { code?: string; script?: string }[];
 }
 
@@ -66,7 +69,7 @@ export async function POST(req: Request) {
   const watermark = !(await isPaying(db, user.id));
   const brandName = text(b.brandName, LIMITS.brand);
   const shared = {
-    imageKey, gender, videoDurationS, aspect: "9:16", captionStyle: "pop", watermark, template: tpl.id,
+    imageKey, gender, videoDurationS, aspect: "9:16", captionStyle: b.captionStyle === "box" ? "box" : "pop", design: cleanDesign(b.design), watermark, template: tpl.id,
     motionPrompt: tpl.motionPrompt,
     headline: text(b.headline, LIMITS.headline),
     brandName,
