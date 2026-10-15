@@ -1,5 +1,6 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { safeNext } from "@/lib/safe-next";
 import { supabaseUser } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -12,8 +13,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const tokenHash = url.searchParams.get("token_hash");
   const type = (url.searchParams.get("type") ?? "email") as EmailOtpType;
-  const n = url.searchParams.get("next");
-  const next = n && n.startsWith("/") && !n.startsWith("//") ? n : "/app";
+  const next = safeNext(url.searchParams.get("next"));
   if (tokenHash) {
     const sb = await supabaseUser();
     const { error } = await sb.auth.verifyOtp({ type, token_hash: tokenHash });

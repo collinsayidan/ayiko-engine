@@ -45,14 +45,38 @@ export interface NotifyTarget {
   videos: { language: string; ok: boolean }[];
 }
 
+/**
+ * This worker no longer holds the job: it went quiet long enough for another
+ * worker to claim it, or the reaper failed and refunded it. Leave it alone.
+ */
+export class JobLostError extends Error {
+  constructor(jobId: string) {
+    super(`job ${jobId} is no longer held by this worker`);
+    this.name = "JobLostError";
+  }
+}
+
+/** The job ran past its deadline (e.g. a provider call that never answered). */
+export class JobTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`job timed out after ${Math.round(ms / 1000)}s`);
+    this.name = "JobTimeoutError";
+  }
+}
+
+export const DEFAULT_JOB_TIMEOUT_MS = 15 * 60_000;
+
 /** Everything the worker needs from the database. */
 export interface Queue {
   claim(workerId: string): Promise<QueuedJob | undefined>;
   heartbeat(jobId: string, workerId: string): Promise<void>;
   clipKeyOf(jobId: string): Promise<string | undefined>;
-  saveKeys(jobId: string, keys: { clip_key?: string; voice_key?: string }): Promise<void>;
-  succeed(jobId: string, outputKey: string, durationS: number): Promise<void>;
-  fail(jobId: string, message: string): Promise<void>;
+  /** Writes only while this worker holds the running job; otherwise throws JobLostError. */
+  saveKeys(jobId: string, workerId: string, keys: { clip_key?: string; voice_key?: string }): Promise<void>;
+  /** Writes only while this worker holds the running job; otherwise throws JobLostError. */
+  succeed(jobId: string, workerId: string, outputKey: string, durationS: number): Promise<void>;
+  /** Fails and refunds the job, unless it has finished or another worker has taken it over. */
+  fail(jobId: string, workerId: string, message: string): Promise<void>;
   reap(): Promise<number>;
   /** Tell the website this worker is online and which languages it can voice. */
   announce(workerId: string, languages: string[], info: Record<string, unknown>): Promise<void>;
@@ -77,20 +101,26 @@ export class SupabaseQueue implements Queue {
     if (error) throw error;
     return (data?.clip_key as string | null) ?? undefined;
   }
-  async saveKeys(jobId: string, keys: { clip_key?: string; voice_key?: string }) {
-    const { error } = await this.db.from("jobs").update(keys).eq("id", jobId);
+  async saveKeys(jobId: string, workerId: string, keys: { clip_key?: string; voice_key?: string }) {
+    await this.updateHeld(jobId, workerId, keys);
+  }
+  async succeed(jobId: string, workerId: string, outputKey: string, durationS: number) {
+    await this.updateHeld(jobId, workerId, {
+      status: "succeeded", output_key: outputKey, duration_s: durationS, current_step: null, finished_at: new Date().toISOString(),
+    });
+  }
+  async fail(jobId: string, workerId: string, message: string) {
+    const { error } = await this.db.rpc("fail_job", { p_job: jobId, p_error: message, p_worker: workerId });
     if (error) throw error;
   }
-  async succeed(jobId: string, outputKey: string, durationS: number) {
-    const { error } = await this.db
-      .from("jobs")
-      .update({ status: "succeeded", output_key: outputKey, duration_s: durationS, current_step: null, finished_at: new Date().toISOString() })
-      .eq("id", jobId);
+  /** Update the job only if this worker still holds it and it is still running. */
+  private async updateHeld(jobId: string, workerId: string, values: Record<string, unknown>) {
+    const { data, error } = await this.db
+      .from("jobs").update(values)
+      .eq("id", jobId).eq("locked_by", workerId).eq("status", "running")
+      .select("id");
     if (error) throw error;
-  }
-  async fail(jobId: string, message: string) {
-    const { error } = await this.db.rpc("fail_job", { p_job: jobId, p_error: message });
-    if (error) throw error;
+    if (!data?.length) throw new JobLostError(jobId);
   }
   async reap() {
     const { data, error } = await this.db.rpc("reap_stale_jobs");
@@ -154,55 +184,44 @@ export function requestFromJob(job: QueuedJob): ShortRequest {
 /** What the user sees when a job fails. Internal details stay in the logs. */
 export function userMessage(err: unknown): string {
   if (err instanceof InvalidRequestError) return `${err.message} Your credits were refunded.`;
+  if (err instanceof JobTimeoutError) return "This video took too long to make. Your credits were refunded, so please try again.";
   return "Something went wrong while making this video. Your credits were refunded, so please try again.";
 }
 
 export interface ProcessOptions {
   workerId: string;
   heartbeatMs?: number;
+  /** After this long the job fails and is refunded, whatever it is waiting on. */
+  timeoutMs?: number;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
   /** Called after a job finishes (either way); sends the "ready" email when the whole batch is done. */
   notify?: (job: QueuedJob) => Promise<void>;
 }
 
-/** Make one video. Never throws: success or a refunded failure is written to the queue. */
-export async function processJob(job: QueuedJob, queue: Queue, deps: EngineDeps, opts: ProcessOptions): Promise<"succeeded" | "failed"> {
+/**
+ * Make one video. Never throws: success or a refunded failure is written to the queue.
+ * "lost" means another worker (or the reaper) took the job over, so this one leaves it alone.
+ */
+export async function processJob(job: QueuedJob, queue: Queue, deps: EngineDeps, opts: ProcessOptions): Promise<"succeeded" | "failed" | "lost"> {
   const log = opts.log ?? (() => {});
   const beat = setInterval(() => { queue.heartbeat(job.id, opts.workerId).catch(() => {}); }, opts.heartbeatMs ?? 30_000);
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS;
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(new JobTimeoutError(timeoutMs)), timeoutMs);
   const t0 = Date.now();
   try {
-    const req = requestFromJob(job);
-    const mod = await deps.moderator.checkScript(req.script ?? "");
-    if (!mod.ok) throw new InvalidRequestError(mod.reason);
-
-    // Extra languages reuse the first language's clip.
-    let videoKey = job.clip_key ?? undefined;
-    if (!videoKey && job.depends_on) {
-      videoKey = await queue.clipKeyOf(job.depends_on);
-      if (!videoKey) throw new Error(`lead job ${job.depends_on} has no clip`);
-    }
-    if (!videoKey && deps.moderator.checkImage) {
-      const photo = await deps.moderator.checkImage(await deps.storage.get(req.imageKey));
-      if (!photo.ok) throw new InvalidRequestError(photo.reason);
-    }
-    if (!job.voice_key && deps.voices.plan(req.language, req.gender).length === 0) {
-      throw new InvalidRequestError(`No voice is available for ${req.language} yet.`);
-    }
-    const run: ShortRequest = { ...req, reuse: { videoKey, voiceKey: job.voice_key ?? undefined } };
-
-    const [voiceKey, clipKey] = await Promise.all([
-      stepVoice(job.id, run, deps).then(async (k) => { if (!job.voice_key) await queue.saveKeys(job.id, { voice_key: k }); return k; }),
-      stepVideo(job.id, run, deps).then(async (k) => { if (!job.clip_key) await queue.saveKeys(job.id, { clip_key: k }); return k; }),
-    ]);
-    const out = await stepRender(job.id, run, voiceKey, clipKey, deps);
-    await queue.succeed(job.id, out.outputKey, out.durationS);
+    await untilAborted(makeVideo(job, queue, deps, opts.workerId, deadline.signal), deadline.signal);
     log("job succeeded", { job: job.id, language: job.language, seconds: Math.round((Date.now() - t0) / 1000) });
     await notifySafely(job, opts);
     return "succeeded";
   } catch (err) {
+    if (err instanceof JobLostError) {
+      log("job taken over elsewhere, leaving it", { job: job.id, language: job.language });
+      return "lost";
+    }
     log("job failed", { job: job.id, language: job.language, error: err instanceof Error ? err.message : String(err) });
     try {
-      await queue.fail(job.id, userMessage(err));
+      await queue.fail(job.id, opts.workerId, userMessage(err));
     } catch (e) {
       // If even this fails, the stale-job reaper refunds it later.
       log("could not mark job failed", { job: job.id, error: e instanceof Error ? e.message : String(e) });
@@ -210,8 +229,54 @@ export async function processJob(job: QueuedJob, queue: Queue, deps: EngineDeps,
     await notifySafely(job, opts);
     return "failed";
   } finally {
+    clearTimeout(timer);
     clearInterval(beat);
   }
+}
+
+/** Voice + clip in parallel, then render, then mark done. Stops between steps once the deadline passes. */
+async function makeVideo(job: QueuedJob, queue: Queue, deps: EngineDeps, workerId: string, signal: AbortSignal): Promise<void> {
+  const req = requestFromJob(job);
+  const mod = await deps.moderator.checkScript(req.script ?? "");
+  if (!mod.ok) throw new InvalidRequestError(mod.reason);
+
+  // Extra languages reuse the first language's clip.
+  let videoKey = job.clip_key ?? undefined;
+  if (!videoKey && job.depends_on) {
+    videoKey = await queue.clipKeyOf(job.depends_on);
+    if (!videoKey) throw new Error(`lead job ${job.depends_on} has no clip`);
+  }
+  if (!videoKey && deps.moderator.checkImage) {
+    const photo = await deps.moderator.checkImage(await deps.storage.get(req.imageKey));
+    if (!photo.ok) throw new InvalidRequestError(photo.reason);
+  }
+  if (!job.voice_key && deps.voices.plan(req.language, req.gender).length === 0) {
+    throw new InvalidRequestError(`No voice is available for ${req.language} yet.`);
+  }
+  const run: ShortRequest = { ...req, reuse: { videoKey, voiceKey: job.voice_key ?? undefined } };
+
+  const [voiceKey, clipKey] = await Promise.all([
+    stepVoice(job.id, run, deps).then(async (k) => { if (!job.voice_key) await queue.saveKeys(job.id, workerId, { voice_key: k }); return k; }),
+    stepVideo(job.id, run, deps, signal).then(async (k) => { if (!job.clip_key) await queue.saveKeys(job.id, workerId, { clip_key: k }); return k; }),
+  ]);
+  signal.throwIfAborted();
+  const out = await stepRender(job.id, run, voiceKey, clipKey, deps);
+  signal.throwIfAborted();
+  await queue.succeed(job.id, workerId, out.outputKey, out.durationS);
+}
+
+/**
+ * Settles with `work`, or rejects with the abort reason as soon as `signal` fires.
+ * Work still running after the deadline is left to finish on its own; its writes
+ * are refused (JobLostError) because the job is no longer running.
+ */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  work.catch(() => {}); // a late failure after the deadline is already handled
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    work.then(resolve, reject);
+  });
 }
 
 async function notifySafely(job: QueuedJob, opts: ProcessOptions) {
@@ -241,7 +306,7 @@ export interface WorkerHandle {
 /** Run `concurrency` claim-and-process loops until stopped. */
 export function startWorker(
   queue: Queue, deps: EngineDeps,
-  o: { workerId: string; concurrency: number; pollMs: number; info?: Record<string, unknown>; log?: ProcessOptions["log"]; notify?: ProcessOptions["notify"] },
+  o: { workerId: string; concurrency: number; pollMs: number; jobTimeoutMs?: number; info?: Record<string, unknown>; log?: ProcessOptions["log"]; notify?: ProcessOptions["notify"] },
 ): WorkerHandle {
   const log = o.log ?? (() => {});
   let stopping = false;
@@ -263,7 +328,7 @@ export function startWorker(
       }
       if (!job) { await sleep(o.pollMs); continue; }
       log("job claimed", { slot: n, job: job.id, language: job.language, attempt: job.attempts });
-      await processJob(job, queue, deps, { workerId: o.workerId, log, notify: o.notify });
+      await processJob(job, queue, deps, { workerId: o.workerId, timeoutMs: o.jobTimeoutMs, log, notify: o.notify });
     }
   }
 
@@ -314,7 +379,7 @@ async function main() {
     : undefined;
   if (!notify) log("ready emails off: set RESEND_API_KEY to turn them on");
   const handle = startWorker(queue, deps, {
-    workerId, concurrency: config.WORKER_CONCURRENCY, pollMs: config.WORKER_POLL_MS, log, notify,
+    workerId, concurrency: config.WORKER_CONCURRENCY, pollMs: config.WORKER_POLL_MS, jobTimeoutMs: config.WORKER_JOB_TIMEOUT_MS, log, notify,
     info: { providers: summary, mode: config.AYIKO_PROVIDER_MODE, moderation: config.OPENAI_API_KEY ? "openai" : "basic", email: Boolean(notify) },
   });
   const shutdown = async (sig: string) => {

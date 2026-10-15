@@ -12,30 +12,37 @@ import { buildProviders } from "../src/providers";
 import type { VideoProvider } from "../src/providers/types";
 import { ProviderError } from "../src/providers/types";
 import { LocalStorage } from "../src/storage";
-import { emailNotifier, processJob, requestFromJob, startWorker, userMessage, type NotifyTarget, type Queue, type QueuedJob } from "../src/worker";
+import { emailNotifier, JobLostError, processJob, requestFromJob, startWorker, userMessage, type NotifyTarget, type Queue, type QueuedJob } from "../src/worker";
 
 /** Mirrors the SQL queue functions (tested against Postgres separately). */
 class MemoryQueue implements Queue {
-  jobs: (QueuedJob & { status: string; output_key?: string; error?: string; refunded?: boolean })[] = [];
+  jobs: (QueuedJob & { status: string; locked_by?: string; output_key?: string; error?: string; refunded?: boolean })[] = [];
   add(j: Partial<QueuedJob> & { id: string }) {
     this.jobs.push({ user_id: "u1", project_id: null, language: "twi", request: {}, depends_on: null, attempts: 0, clip_key: null, voice_key: null, status: "queued", ...j });
   }
   get(id: string) { return this.jobs.find((j) => j.id === id)!; }
-  async claim() {
+  async claim(workerId = "w") {
     const j = this.jobs.find((x) => x.status === "queued" && (!x.depends_on || this.get(x.depends_on).status === "succeeded"));
     if (!j) return undefined;
-    j.status = "running"; j.attempts += 1;
+    j.status = "running"; j.attempts += 1; j.locked_by = workerId;
     return { ...j };
   }
   async heartbeat() {}
   async clipKeyOf(id: string) { return this.get(id).clip_key ?? undefined; }
-  async saveKeys(id: string, k: { clip_key?: string; voice_key?: string }) { Object.assign(this.get(id), k); }
-  async succeed(id: string, key: string) { Object.assign(this.get(id), { status: "succeeded", output_key: key }); }
-  async fail(id: string, msg: string) {
+  private held(id: string, workerId: string) {
     const j = this.get(id);
-    if (j.status === "succeeded") return;
+    if (j.status !== "running" || j.locked_by !== workerId) throw new JobLostError(id);
+    return j;
+  }
+  async saveKeys(id: string, workerId: string, k: { clip_key?: string; voice_key?: string }) { Object.assign(this.held(id, workerId), k); }
+  async succeed(id: string, workerId: string, key: string) { Object.assign(this.held(id, workerId), { status: "succeeded", output_key: key }); }
+  /** Like fail_job: a worker only fails a job it holds; workerId null is the reaper or a cascade. */
+  async fail(id: string, workerId: string | null, msg: string) {
+    const j = this.get(id);
+    const ok = workerId === null ? j.status === "queued" || j.status === "running" : j.status === "running" && j.locked_by === workerId;
+    if (!ok) return;
     Object.assign(j, { status: "failed", error: msg, refunded: true });
-    for (const d of this.jobs.filter((x) => x.depends_on === id && (x.status === "queued" || x.status === "running"))) await this.fail(d.id, "lead failed");
+    for (const d of this.jobs.filter((x) => x.depends_on === id && (x.status === "queued" || x.status === "running"))) await this.fail(d.id, null, "lead failed");
   }
   async reap() { return 0; }
   announced: string[] = [];
@@ -169,6 +176,44 @@ describe("render worker", () => {
     for (let i = 0; i < 3; i++) { const x = await q2.claim(); if (x) await processJob(x, q2, ok.deps, { workerId: "w", notify }); }
     expect(sent).toEqual(["ama@example.com"]);
   }, 180_000);
+
+  it("fails and refunds a job whose provider never answers, and the jobs waiting on it", async () => {
+    let aborted = false;
+    const hung: VideoProvider = { id: "hung", imageToVideo: (r) => new Promise(() => { r.signal?.addEventListener("abort", () => { aborted = true; }); }) };
+    const { deps, imageKey } = await setup(() => hung);
+    const q = new MemoryQueue();
+    q.add({ id: "lead", request: req(imageKey) });
+    q.add({ id: "yo", language: "yo", depends_on: "lead", request: req(imageKey) });
+    const j = await q.claim();
+    expect(await processJob(j!, q, deps, { workerId: "w", timeoutMs: 1_500 })).toBe("failed");
+    expect(aborted).toBe(true);
+    expect(q.get("lead")).toMatchObject({ status: "failed", refunded: true });
+    expect(q.get("lead").error).toMatch(/too long.*refunded/);
+    expect(q.get("yo")).toMatchObject({ status: "failed", refunded: true });
+  }, 60_000);
+
+  it("leaves a job alone once another worker has claimed it", async () => {
+    const q = new MemoryQueue();
+    // While this worker waits on the clip, it goes quiet and a second worker takes the job over.
+    const { deps, imageKey } = await setup((v) => ({ id: "slow", imageToVideo: async (r) => { q.get("lead").locked_by = "w2"; return v.imageToVideo(r); } }));
+    q.add({ id: "lead", request: req(imageKey) });
+    const j = await q.claim("w1");
+    expect(await processJob(j!, q, deps, { workerId: "w1" })).toBe("lost");
+    expect(q.get("lead")).toMatchObject({ status: "running", locked_by: "w2", clip_key: null });
+    expect(q.get("lead").refunded).toBeUndefined();
+  }, 60_000);
+
+  it("never marks a refunded job as succeeded", async () => {
+    const q = new MemoryQueue();
+    const { deps, imageKey } = await setup();
+    // The reaper fails and refunds the job while this worker is rendering it.
+    deps.jobs.update = async (_id, patch) => { if (patch.currentStep === "render") await q.fail("lead", null, "took too long"); };
+    q.add({ id: "lead", request: req(imageKey) });
+    const j = await q.claim("w1");
+    expect(await processJob(j!, q, deps, { workerId: "w1" })).toBe("lost");
+    expect(q.get("lead")).toMatchObject({ status: "failed", refunded: true });
+    expect(q.get("lead").output_key).toBeUndefined();
+  }, 60_000);
 
   it("the loop drains the queue and stops cleanly", async () => {
     const { deps, imageKey } = await setup();

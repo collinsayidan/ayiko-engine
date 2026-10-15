@@ -130,14 +130,14 @@ export async function stepVoice(jobId: string, req: ShortRequest, deps: EngineDe
   }
 }
 
-export async function stepVideo(jobId: string, req: ShortRequest, deps: EngineDeps): Promise<string> {
+export async function stepVideo(jobId: string, req: ShortRequest, deps: EngineDeps, signal?: AbortSignal): Promise<string> {
   if (req.reuse?.videoKey) return req.reuse.videoKey;
   await deps.jobs.update(jobId, { currentStep: "video" });
   const image: MediaBytes = await deps.storage.get(req.imageKey);
   const started = Date.now();
   try {
     const clip = await deps.video.imageToVideo({
-      image, prompt: req.motionPrompt?.trim() || DEFAULT_MOTION, durationS: req.videoDurationS ?? 5,
+      image, prompt: req.motionPrompt?.trim() || DEFAULT_MOTION, durationS: req.videoDurationS ?? 5, signal,
     });
     const key = await deps.storage.put(keys.clip(req.userId, jobId), clip);
     await deps.jobs.addGeneration({

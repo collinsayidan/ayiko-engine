@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeNext } from "@/lib/safe-next";
 import { supabaseUser } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -14,9 +15,4 @@ export async function GET(request: Request) {
     if (!error) return NextResponse.redirect(new URL(next, url.origin));
   }
   return NextResponse.redirect(new URL("/login?error=link", url.origin));
-}
-
-/** Only allow redirects within this site. */
-function safeNext(n: string | null) {
-  return n && n.startsWith("/") && !n.startsWith("//") ? n : "/app";
 }
