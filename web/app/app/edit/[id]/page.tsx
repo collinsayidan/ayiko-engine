@@ -4,6 +4,7 @@ import { Editor } from "@/components/app/Editor";
 import { env, serverConfigured } from "@/lib/env";
 import { currentUser, supabaseAdmin } from "@/lib/supabase";
 import { balanceOf, isPaying } from "@/lib/studio";
+import { cleanBrandKit } from "@/lib/brand";
 import "../../../studio.css";
 
 export const metadata: Metadata = { title: "Edit video · Ayiko.ai", robots: { index: false } };
@@ -47,6 +48,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       media={{ clipUrl, photoUrl, outputUrl }}
       balance={balance}
       watermark={!paying}
+      brandColours={user.user_metadata?.brand_kit ? [cleanBrandKit(user.user_metadata.brand_kit).accent] : []}
     />
   );
 }

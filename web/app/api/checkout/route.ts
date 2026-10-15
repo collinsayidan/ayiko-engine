@@ -39,8 +39,8 @@ export async function POST(req: Request) {
       metadata: meta,
       ...(plan.mode === "subscription" ? { subscription_data: { metadata: meta } } : { payment_intent_data: { metadata: meta } }),
       allow_promotion_codes: true,
-      success_url: `${origin}/app?checkout=success&plan_paid=${plan.id}`,
-      cancel_url: `${origin}/app?checkout=cancelled`,
+      success_url: `${origin}/app/billing?checkout=success&plan_paid=${plan.id}`,
+      cancel_url: `${origin}/app/billing?checkout=cancelled`,
     });
     if (!session.url) throw new Error("no checkout url");
     return NextResponse.json({ url: session.url });

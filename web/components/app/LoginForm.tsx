@@ -35,7 +35,8 @@ export function LoginForm({ next, linkError, configured, plan }: { next: string;
   }
 
   return (
-    <main className="auth">
+    <main className="auth auth-split">
+      <div className="auth-side">
       <a className="logo" href="/" aria-label="Ayiko home"><LogoMark /><span>ayiko<em>.ai</em></span></a>
       <div className="auth-card">
         {state === "sent" ? (
@@ -70,6 +71,14 @@ export function LoginForm({ next, linkError, configured, plan }: { next: string;
           </>
         )}
       </div>
+      </div>
+      <aside className="auth-show" aria-hidden="true">
+        <video src="/showcase/multi-twi.mp4" poster="/showcase/multi-twi.jpg" autoPlay muted loop playsInline preload="metadata" />
+        <div className="auth-show-copy">
+          <b>One photo. Six languages.</b>
+          <span>Voiceovers and captions in Twi, Yorùbá, Pidgin, Hausa, English and French, ready to post in minutes.</span>
+        </div>
+      </aside>
     </main>
   );
 }

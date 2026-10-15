@@ -32,3 +32,17 @@ export function cleanDesign(d: unknown): Design {
   if (typeof x.uppercase === "boolean") out.uppercase = x.uppercase;
   return out;
 }
+
+/** Split the script into the short phrases the renderer shows (about 20 characters a line). */
+export function phrases(script: string): string[] {
+  const words = script.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  let cur: string[] = [];
+  for (const w of words) {
+    if (cur.join(" ").length + w.length > 22 && cur.length) { out.push(cur.join(" ")); cur = []; }
+    cur.push(w);
+    if (/[.!?]$/.test(w)) { out.push(cur.join(" ")); cur = []; }
+  }
+  if (cur.length) out.push(cur.join(" "));
+  return out.length ? out : ["Your captions appear here"];
+}

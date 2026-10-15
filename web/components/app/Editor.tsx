@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LogoMark } from "../Icons";
 import { languageByCode, LIMITS } from "@/lib/catalog";
-import { ACCENTS, DEFAULTS, HIGHLIGHTS, cleanDesign, type Design } from "@/lib/design";
+import { ACCENTS, DEFAULTS, HIGHLIGHTS, cleanDesign, phrases, type Design } from "@/lib/design";
+import { Icon } from "./icons";
 
 interface Job {
   id: string;
@@ -20,19 +21,8 @@ interface Job {
 
 type Layer = "caption" | "headline";
 
-/** Split the script into the short phrases the renderer shows (about 20 characters a line). */
-function phrases(script: string): string[] {
-  const words = script.split(/\s+/).filter(Boolean);
-  const out: string[] = [];
-  let cur: string[] = [];
-  for (const w of words) {
-    if (cur.join(" ").length + w.length > 22 && cur.length) { out.push(cur.join(" ")); cur = []; }
-    cur.push(w);
-    if (/[.!?]$/.test(w)) { out.push(cur.join(" ")); cur = []; }
-  }
-  if (cur.length) out.push(cur.join(" "));
-  return out.length ? out : ["Your captions appear here"];
-}
+/** Everything undo and redo track. */
+interface Doc { design: Required<Design>; style: "pop" | "box"; headline: string; brand: string; cta: string; script: string }
 
 /**
  * The editing canvas. A live 9:16 preview of the video with its design
@@ -40,20 +30,60 @@ function phrases(script: string): string[] {
  * so what you place here is where it lands in the final video. Drag the
  * captions or the headline, pick colours and style, then render a new
  * version that reuses the original voice and AI clip (1 credit).
+ * Undo and redo cover every change (Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z).
  */
-export function Editor({ job, media, balance, watermark }: {
+export function Editor({ job, media, balance, watermark, brandColours = [] }: {
   job: Job;
   media: { clipUrl: string | null; photoUrl: string | null; outputUrl: string | null };
   balance: number;
   watermark: boolean;
+  /** Colours saved in the brand kit, offered first. */
+  brandColours?: string[];
 }) {
   const start = cleanDesign(job.design);
-  const [design, setDesign] = useState<Required<Design>>({ ...DEFAULTS, ...start });
-  const [style, setStyle] = useState<"pop" | "box">(job.captionStyle);
-  const [headline, setHeadline] = useState(job.headline);
-  const [brand, setBrand] = useState(job.brandName);
-  const [cta, setCta] = useState(job.cta);
-  const [script, setScript] = useState(job.script);
+  const [doc, setDocState] = useState<Doc>({ design: { ...DEFAULTS, ...start }, style: job.captionStyle, headline: job.headline, brand: job.brandName, cta: job.cta, script: job.script });
+  const past = useRef<Doc[]>([]);
+  const future = useRef<Doc[]>([]);
+  const lastPush = useRef(0);
+  const [, setHistoryTick] = useState(0);
+  // Rapid changes (typing, dragging) fold into one undo step.
+  const setDoc = useCallback((patch: Partial<Doc> | ((d: Doc) => Partial<Doc>)) => {
+    setDocState((cur) => {
+      const next = { ...cur, ...(typeof patch === "function" ? patch(cur) : patch) };
+      const now = Date.now();
+      if (now - lastPush.current > 600) past.current = [...past.current.slice(-49), cur];
+      lastPush.current = now;
+      future.current = [];
+      return next;
+    });
+    setHistoryTick((n) => n + 1);
+  }, []);
+  const undo = useCallback(() => {
+    setDocState((cur) => { const prev = past.current.pop(); if (!prev) return cur; future.current.push(cur); return prev; });
+    lastPush.current = 0;
+    setHistoryTick((n) => n + 1);
+  }, []);
+  const redo = useCallback(() => {
+    setDocState((cur) => { const nxt = future.current.pop(); if (!nxt) return cur; past.current.push(cur); return nxt; });
+    lastPush.current = 0;
+    setHistoryTick((n) => n + 1);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || (e.target as HTMLElement)?.matches?.("input, textarea")) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); redo(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+  const { design, style, headline, brand, cta, script } = doc;
+  const setStyle = (v: Doc["style"]) => setDoc({ style: v });
+  const setHeadline = (v: string) => setDoc({ headline: v });
+  const setBrand = (v: string) => setDoc({ brand: v });
+  const setCta = (v: string) => setDoc({ cta: v });
+  const setScript = (v: string) => setDoc({ script: v });
   const [endCard, setEndCard] = useState(false);
   const [view, setView] = useState<"edit" | "original">("edit");
   const [drag, setDrag] = useState<Layer | null>(null);
@@ -88,7 +118,8 @@ export function Editor({ job, media, balance, watermark }: {
   const hot = tick % 4 % Math.max(1, lineWords.length);
   const tf = (s: string) => (design.uppercase ? s.toLocaleUpperCase() : s);
 
-  const set = (patch: Partial<Design>) => setDesign((d) => ({ ...d, ...patch }));
+  const set = (patch: Partial<Design>) => setDoc((d) => ({ design: { ...d.design, ...patch } }));
+  const accents = [...new Set([...brandColours.map((c) => c.toUpperCase()), ...ACCENTS])];
 
   // Dragging layers vertically (pointer events: mouse, touch and pen).
   useEffect(() => {
@@ -130,7 +161,7 @@ export function Editor({ job, media, balance, watermark }: {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) { setError(body.error ?? "We couldn't start the new version."); setSaving(false); return; }
-      window.location.href = "/app?edited=1";
+      window.location.href = "/app/videos?edited=1";
     } catch {
       setError("Check your connection and try again.");
       setSaving(false);
@@ -145,9 +176,15 @@ export function Editor({ job, media, balance, watermark }: {
   return (
     <div className="studio editor">
       <header className="topbar">
-        <a className="logo" href="/app" aria-label="Back to studio"><LogoMark /><span>ayiko<em>.ai</em></span></a>
+        <div className="topbar-left">
+          <a className="back" href="/app/videos" aria-label="Back to My videos"><Icon name="arrowLeft" /></a>
+          <a className="logo" href="/app/videos" aria-label="Ayiko studio"><LogoMark /><span>ayiko<em>.ai</em></span></a>
+        </div>
         <div className="topbar-right">
-          <a className="nav-login" href="/app">← Back to My videos</a>
+          <div className="undo-group" role="group" aria-label="History">
+            <button type="button" onClick={undo} disabled={!past.current.length} aria-label="Undo" title="Undo (Ctrl+Z)"><Icon name="undo" /></button>
+            <button type="button" onClick={redo} disabled={!future.current.length} aria-label="Redo" title="Redo (Shift+Ctrl+Z)"><Icon name="redo" /></button>
+          </div>
           <span className="credits"><b>{balance}</b> credits</span>
         </div>
       </header>
@@ -259,9 +296,13 @@ export function Editor({ job, media, balance, watermark }: {
             <legend>Brand colour</legend>
             <div className="swatches" role="radiogroup" aria-label="Headline and button colour">
               <span>Headline and button</span>
-              {ACCENTS.map((c) => (
+              {accents.map((c) => (
                 <button key={c} type="button" role="radio" aria-checked={design.accent === c} aria-label={c} className={design.accent === c ? "on" : ""} style={{ background: c }} onClick={() => set({ accent: c })} />
               ))}
+              <label className={`swatch-custom${accents.includes(design.accent.toUpperCase()) ? "" : " on"}`} title="Pick any colour" style={accents.includes(design.accent.toUpperCase()) ? undefined : { background: design.accent }}>
+                <span className="sr-only">Custom brand colour</span>
+                <input type="color" value={design.accent} onChange={(e) => set({ accent: e.target.value.toUpperCase() })} />
+              </label>
             </div>
           </fieldset>
 
@@ -277,7 +318,7 @@ export function Editor({ job, media, balance, watermark }: {
             </div>
           </fieldset>
 
-          <button type="button" className="linkish" onClick={() => { setDesign({ ...DEFAULTS }); setStyle("pop"); }}>Reset to Ayiko style</button>
+          <button type="button" className="linkish" onClick={() => setDoc({ design: { ...DEFAULTS }, style: "pop" })}>Reset to Ayiko style</button>
 
           <div className="go">
             <div className="quote"><span>Same voice and AI clip, new look</span><b>1 credit</b></div>

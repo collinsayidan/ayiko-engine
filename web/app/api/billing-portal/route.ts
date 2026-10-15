@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   if (!data?.stripe_customer_id) return fail(404, "There's no billing account yet. Buy credits first.");
   try {
     const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
-    const portal = await stripe().billingPortal.sessions.create({ customer: data.stripe_customer_id as string, return_url: `${origin}/app` });
+    const portal = await stripe().billingPortal.sessions.create({ customer: data.stripe_customer_id as string, return_url: `${origin}/app/billing` });
     return NextResponse.json({ url: portal.url });
   } catch (err) {
     console.error("billing portal failed", err);
