@@ -29,8 +29,8 @@ Never paste a secret key into chat, email or GitHub. Keys go only into Vercel's 
    - the **publishable** key (`sb_publishable_…`). It's safe in the browser.
    - the **secret** key (`sb_secret_…`). Create one if there isn't one yet. It's server only.
 4. **Authentication → URL Configuration**:
-   - **Site URL:** `https://ayiko-engine.vercel.app` (change it to `https://ayiko.ai` once the domain is attached)
-   - **Redirect URLs:** add `https://ayiko-engine.vercel.app/auth/callback` and `http://localhost:3000/auth/callback`
+   - **Site URL:** `https://ayiko.ai` (just the address, no path and no trailing slash)
+   - **Redirect URLs:** add `https://ayiko.ai/**`, `https://*-collins-ayidans-projects.vercel.app/**` (preview links) and `http://localhost:3000/**`. The `/**` matters: sign-in links carry `?next=…`, and an address without it doesn't match, so Supabase falls back to the Site URL.
 5. **Google login** (recommended, because it works without your own email setup):
    - In **console.cloud.google.com**, create a project, then go to **APIs & Services → OAuth consent screen**. Choose **External**, set the app name to "Ayiko", add your email and save.
    - Go to **Credentials → Create credentials → OAuth client ID → Web application**. Under **Authorised redirect URIs**, add `https://<your-project>.supabase.co/auth/v1/callback`. The exact address is shown on Supabase's Google provider page.

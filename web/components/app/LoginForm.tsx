@@ -28,7 +28,13 @@ export function LoginForm({ next, linkError, configured, plan }: { next: string;
     const { error } = await supabaseBrowser().auth.signInWithOtp({ email: value, options: { emailRedirectTo: redirectTo() } });
     if (error) {
       setState("idle");
-      setError(error.status === 429 ? "Too many attempts. Wait a minute and try again." : "We couldn't send the link. Check the address and try again.");
+      console.error("Sign-in link not sent:", error.status, error.message);
+      setError(
+        error.status === 429 ? "Too many attempts. Wait a minute and try again."
+        // Supabase's built-in email only sends to the project's own team, and fails when SMTP isn't set up.
+        : (error.status ?? 0) >= 500 || /not authori[sz]ed|sending/i.test(error.message) ? "Email sign-in isn't available right now. Continue with Google instead."
+        : "We couldn't send the link. Check the address and try again.",
+      );
       return;
     }
     setState("sent");
